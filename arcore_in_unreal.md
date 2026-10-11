@@ -210,7 +210,7 @@ won't start and black passthrough, where people reinstall SDKs and switch RHIs.
 Nowhere between `AR_ERROR_FATAL` and `Failed to register sensor to queue 0` does
 the word "permission" appear.
 
-### Appendix: how do i found the Sampling Rate issue
+#### Appendix: how do i found the Sampling Rate issue
 - I have a native (as in Java + Cpp + Vulkan) arcore app that do space reconstruction, basically an early prototype of what I'm doing in Unreal.
 - It creates it's own arcore session and works fine, while the Unreal version in the same device fails.
 - By grepping the manifest it became clear what was missing. 
@@ -322,3 +322,78 @@ It even has an "End of Evangelion" effect with the interaction of the default te
 ![Image description](./images/Screenshot_20261010_210620.png)
 
 See that while we got our camera feed for the 1st time it's broken, since the colour is wrong.
+
+If we hadn't fixed the sampling rate configuration we'd get 
+
+> Fatal error occurred when starting ARCore Session. Stopping and restarting
+> ARCore Session may fix the issue.
+
+And would get in the rabbit hole of not being able to pinpoint the error with the information given by the error messages.
+
+#### The green image
+
+It can't be fixed. The plugin's own camera overlay goes green because of how the plugin hands the camera texture to Unreal's Vulkan renderer. That code is inside the engine, and I'd need an engine built from source to even debug it. So getting the RGB feed right means switching the plugin's overlay off and drawing the feed myself from ARCore's CPU image even if that means a texture copy because the alternative is this ugly green tinted image. That's why this is the Gom Jabber of ARCore in unreal engine.
+
+### The back door: the plugin's own session and frame
+
+The plugin acquires depth, but only `ArFrame_acquireDepthImage16Bits`, which is
+the *smoothed* stream. It exposes no raw depth and no confidence map in its public API and I need them do use OpenChisel. I also need this backdoor to fix the green camera issue.
+
+
+`FGoogleARCoreDevice` lives in the plugin's `Private` folder and has no
+`GOOGLEARCOREBASE_API` export macro. In `GoogleARCoreDevice.cpp`, around lines
+653 and 661:
+
+```cpp
+void* FGoogleARCoreDevice::GetARSessionRawPointer()
+{
+#if PLATFORM_ANDROID
+	return reinterpret_cast<void*>(ARCoreSession->GetHandle());
+#endif
+	return nullptr;
+}
+
+void* FGoogleARCoreDevice::GetGameThreadARFrameRawPointer()
+{
+#if PLATFORM_ANDROID
+	return reinterpret_cast<void*>(ARCoreSession->GetLatestFrameRawPointer());
+#endif
+	return nullptr;
+}
+```
+
+Those return the real `ArSession*` and the current `ArFrame*`. For some reason these functions weren't documented. Maybe they are considered internal and can change at any time? I don't know. But I do know that at Unreal Engine 5.7, they are there even though they aren't documented. With those two pointers, everything else is the plain ARCore C API and we could do 
+```cpp
+auto* Device  = FGoogleARCoreDevice::GetInstance();
+auto* Session = reinterpret_cast<ArSession*>(Device->GetARSessionRawPointer());
+auto* Frame   = reinterpret_cast<ArFrame*>(Device->GetGameThreadARFrameRawPointer());
+```
+and get what we need.
+
+### Reaching them from our module
+
+In `Source/UnrealWorld/UnrealWorld.Build.cs`:
+
+```csharp
+if (Target.Platform == UnrealTargetPlatform.Android)
+{
+    PrivateDependencyModuleNames.AddRange(new string[] {
+        "GoogleARCoreBase",
+        "GoogleARCoreSDK",       // supplies arcore_c_api.h
+        "GoogleARCoreRendering", // GoogleARCoreDevice.h includes a header from it
+    });
+
+    PrivateIncludePaths.Add(Path.Combine(EngineDirectory,
+        "Plugins", "Runtime", "AR", "Google", "GoogleARCore",
+        "Source", "GoogleARCoreBase", "Private"));
+}
+```
+
+and in the `.cpp` files that use it:
+
+```cpp
+#if PLATFORM_ANDROID
+#include "GoogleARCoreDevice.h"
+#include "arcore_c_api.h"
+#endif
+```
