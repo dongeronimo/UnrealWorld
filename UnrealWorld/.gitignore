@@ -1,0 +1,98 @@
+# ---------------------------------------------------------------
+# Unreal Engine generated folders
+# ---------------------------------------------------------------
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+# Build/ holds generated output, but keep platform icons and configs
+Build/*
+!Build/*/
+Build/*/**
+!Build/**/*.ico
+!Build/**/*.png
+!Build/**/*.ini
+
+# Same folders inside plugins
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+
+# ---------------------------------------------------------------
+# IDE / project files (regenerated from the .uproject)
+# ---------------------------------------------------------------
+# Visual Studio
+.vs/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.user
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Rider
+.idea/
+*.sln.DotSettings.user
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Xcode
+*.xcodeproj
+*.xcworkspace
+
+# ---------------------------------------------------------------
+# Compiled / build artifacts
+# ---------------------------------------------------------------
+*.slo
+*.lo
+*.o
+*.obj
+*.gch
+*.pch
+*.so
+*.dylib
+*.dll
+*.lib
+*.a
+*.la
+*.exe
+*.out
+*.app
+*.ipa
+*.pdb
+*.ilk
+*.exp
+*.mod
+*.target
+*.modules
+
+# Packaged builds
+Packaged/
+Releases/
+Archived/
+*.pak
+*.ucas
+*.utoc
+
+# ---------------------------------------------------------------
+# OS junk
+# ---------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+._*
+
+# ---------------------------------------------------------------
+# Misc
+# ---------------------------------------------------------------
+*.log
+*.tmp
+*.blend1
+*.blend2

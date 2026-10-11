@@ -1,0 +1,73 @@
+# ---------------------------------------------
+# Unreal Engine generated folders
+# ---------------------------------------------
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/*
+!Build/**/*.ico
+!Build/**/*.png
+
+# Plugin generated folders
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+
+# Packaged builds / cooked output
+Packaged/
+Archive/
+*.pak
+*.ucas
+*.utoc
+
+# ---------------------------------------------
+# IDE / project files (regenerated from .uproject)
+# ---------------------------------------------
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+*.xcodeproj
+*.xcworkspace
+*.code-workspace
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+.ignore
+
+# ---------------------------------------------
+# Compiled / build artifacts
+# ---------------------------------------------
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.dylib
+*.so
+*.exe
+*.app
+*.ipa
+*.apk
+*.target
+*.modules
+
+# ---------------------------------------------
+# OS / misc
+# ---------------------------------------------
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.tmp
+*.log
+*.bak
+
+# Local tool state
+.claude/settings.local.json

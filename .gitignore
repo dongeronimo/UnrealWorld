@@ -1,0 +1,11 @@
+# Each Unreal project (UnrealWorld/, Handheld/) has its own .gitignore.
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local tool state
+.claude/settings.local.json
+
+Archive/
