@@ -5,7 +5,9 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
+.blend1
 # Local tool state
 .claude/settings.local.json
 
 Archive/
+Art/
