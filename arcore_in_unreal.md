@@ -939,6 +939,297 @@ About ARImage and it's data: Notice that it dies in the cleanup step, that runs 
 
 ### Correct camera feed
 
+The idea is that an actor will take rgb camera data from `FARFrameData` and update it's texture every frame (if we look at the code at `UARSessionStarter::ReadAndBroadcastFrame` we'll see that there's broadcast if there's new AR Frame). 
+
+- ARCameraFeed.h
+```cpp
+#pragma once
+#include "CoreMinimal.h"
+#include "GameFramework/Actor.h"
+#include "ARCameraFeed.generated.h"
+struct FARFrameData;
+class UTexture2D;
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
+class UPostProcessComponent;
+
+UENUM(BlueprintType)
+enum class EARFeedSource : uint8 {
+    Color, // camera image as Y + UV textures, converted to RGB in the material
+    Depth, // raw depth, millimetres as a G16 texture
+};
+
+// Shows one ARCore image stream full screen, through an unbound post-process.
+// Several can coexist (colour, depth for debugging); keep only one enabled at a time
+// or they draw over each other.
+//
+// Material parameters it sets:
+//   Color: FeedY (G8), FeedUV (R8G8), VFirst (1 = NV21, bytes are V,U)
+//   Depth: FeedDepth (G16, value * 65535 = millimetres, 0 = no estimate)
+//   Both:  ViewToImageOrigin (xy), ViewToImageAxes (xy = +view x, zw = +view y)
+//          image uv = Origin.xy + ViewUV.x * Axes.xy + ViewUV.y * Axes.zw
+UCLASS()
+class AARCameraFeed : public AActor {
+    GENERATED_BODY()
+public:
+    AARCameraFeed();
+
+    UPROPERTY(EditAnywhere, Category = "AR Feed")
+    EARFeedSource Source = EARFeedSource::Color;
+
+    // A Post Process domain material reading the parameters above.
+    UPROPERTY(EditAnywhere, Category = "AR Feed")
+    TObjectPtr<UMaterialInterface> FeedMaterial;
+
+    // Off = nothing drawn and nothing uploaded. The last image is kept.
+    UFUNCTION(BlueprintCallable, Category = "AR Feed")
+    void SetFeedEnabled(bool bEnabled);
+
+protected:
+    virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+private:
+    void HandleFrame(const FARFrameData& Frame);
+    void UpdateColor(const FARFrameData& Frame);
+    void UpdateDepth(const FARFrameData& Frame);
+    void SetViewToImage(const float ViewToImage[6]);
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UPostProcessComponent> PostProcess;
+
+    // Transient UPROPERTYs: the GC keeps them alive.
+    UPROPERTY(Transient)
+    TObjectPtr<UMaterialInstanceDynamic> FeedMID;
+    UPROPERTY(Transient)
+    TObjectPtr<UTexture2D> YTexture;
+    UPROPERTY(Transient)
+    TObjectPtr<UTexture2D> UVTexture;
+    UPROPERTY(Transient)
+    TObjectPtr<UTexture2D> DepthTexture;
+
+    FDelegateHandle FrameHandle;
+};
+```
+- ARCameraFeed.cpp
+```cpp
+#include "ARCameraFeed.h"
+#include "ARSessionStarter.h"
+#include "Components/PostProcessComponent.h"
+#include "Engine/GameInstance.h"
+#include "Engine/Texture2D.h"
+#include "Materials/MaterialInstanceDynamic.h"
+
+// (Re)creates the texture when the size changes, which in practice is the
+// first frame only.
+static UTexture2D* EnsureTexture(TObjectPtr<UTexture2D>& Texture, int32 Width, int32 Height,
+    EPixelFormat Format, TextureFilter Filter) {
+    if (Texture && Texture->GetSizeX() == Width && Texture->GetSizeY() == Height)
+        return Texture;
+    Texture = UTexture2D::CreateTransient(Width, Height, Format);
+    Texture->SRGB = false; // Y, UV and depth are data, the material does the colour maths
+    Texture->Filter = Filter;
+    Texture->UpdateResource();
+    return Texture;
+}
+
+// The upload happens on the render thread, a frame or so after OnARFrame
+// returned and ARCore released the image. So the rows are copied into a buffer
+// of our own, and the render thread frees it when it's done. A buffer kept on
+// the actor would be overwritten by the next frame while the render thread may
+// still be reading it.
+// Rows are copied one by one: Android doesn't pad the last row to the stride,
+// so copying Stride * Rows can read past the end of the plane.
+static void UploadPlane(UTexture2D* Texture, const uint8* Src, int32 SrcRowStride,
+    int32 RowBytes, int32 Rows, int32 BytesPerPixel) {
+    uint8* Copy = static_cast<uint8*>(FMemory::Malloc(RowBytes * Rows));
+    for (int32 Row = 0; Row < Rows; ++Row)
+        FMemory::Memcpy(Copy + Row * RowBytes, Src + Row * SrcRowStride, RowBytes);
+    // UpdateTextureRegions keeps the region pointer as well, not a copy of it.
+    FUpdateTextureRegion2D* Region =
+        new FUpdateTextureRegion2D(0, 0, 0, 0, RowBytes / BytesPerPixel, Rows);
+    Texture->UpdateTextureRegions(0, 1, Region, RowBytes, BytesPerPixel, Copy,
+        [](uint8* Data, const FUpdateTextureRegion2D* Regions) {
+            FMemory::Free(Data);
+            delete Regions;
+        });
+}
+
+AARCameraFeed::AARCameraFeed() {
+    // Driven by OnARFrame, not by tick.
+    PrimaryActorTick.bCanEverTick = false;
+    PostProcess = CreateDefaultSubobject<UPostProcessComponent>(TEXT("Feed Post Process"));
+    RootComponent = PostProcess;
+    // Unbound: applies to the whole view, wherever the actor is.
+    PostProcess->bUnbound = true;
+}
+
+void AARCameraFeed::BeginPlay() {
+    Super::BeginPlay();
+    if (FeedMaterial) {
+        FeedMID = UMaterialInstanceDynamic::Create(FeedMaterial, this);
+        PostProcess->AddOrUpdateBlendable(FeedMID.Get(), 1.f);
+    }
+    if (UARSessionStarter* Starter = GetGameInstance()->GetSubsystem<UARSessionStarter>())
+        FrameHandle = Starter->OnARFrame.AddUObject(this, &AARCameraFeed::HandleFrame);
+}
+
+void AARCameraFeed::EndPlay(const EEndPlayReason::Type EndPlayReason) {
+    // The subsystem outlives the actor, so it has to forget us explicitly.
+    if (UGameInstance* GameInstance = GetGameInstance())
+        if (UARSessionStarter* Starter = GameInstance->GetSubsystem<UARSessionStarter>())
+            Starter->OnARFrame.Remove(FrameHandle);
+    FrameHandle.Reset();
+    Super::EndPlay(EndPlayReason);
+}
+
+void AARCameraFeed::SetFeedEnabled(bool bEnabled) {
+    PostProcess->bEnabled = bEnabled;
+}
+
+void AARCameraFeed::HandleFrame(const FARFrameData& Frame) {
+    if (!PostProcess->bEnabled || !FeedMID)
+        return;
+    if (Source == EARFeedSource::Color)
+        UpdateColor(Frame);
+    else
+        UpdateDepth(Frame);
+}
+
+void AARCameraFeed::UpdateColor(const FARFrameData& Frame) {
+    if (!Frame.Y || !Frame.UV)
+        return; // keep showing the last image
+    const int32 W = Frame.ImageWidth, H = Frame.ImageHeight;
+    // Chroma is half resolution both ways; each texel is one (U,V) or (V,U) pair.
+    EnsureTexture(YTexture, W, H, PF_G8, TF_Bilinear);
+    EnsureTexture(UVTexture, W / 2, H / 2, PF_R8G8, TF_Bilinear);
+    UploadPlane(YTexture, Frame.Y, Frame.YRowStride, W, H, 1);
+    UploadPlane(UVTexture, Frame.UV, Frame.UVRowStride, (W / 2) * 2, H / 2, 2);
+
+    FeedMID->SetTextureParameterValue(TEXT("FeedY"), YTexture);
+    FeedMID->SetTextureParameterValue(TEXT("FeedUV"), UVTexture);
+    FeedMID->SetScalarParameterValue(TEXT("VFirst"), Frame.bVFirst ? 1.f : 0.f);
+    SetViewToImage(Frame.ViewToImage);
+}
+
+void AARCameraFeed::UpdateDepth(const FARFrameData& Frame) {
+    if (!Frame.DepthMm || Frame.IntrinsicsHeight == 0)
+        return; // normal while the phone is still
+    const int32 W = Frame.DepthWidth, H = Frame.DepthHeight;
+    // Nearest: blending a 0 (no estimate) with its neighbours invents depths.
+    EnsureTexture(DepthTexture, W, H, PF_G16, TF_Nearest);
+    UploadPlane(DepthTexture, reinterpret_cast<const uint8*>(Frame.DepthMm),
+        Frame.DepthRowStrideBytes, W * 2, H, 2);
+    FeedMID->SetTextureParameterValue(TEXT("FeedDepth"), DepthTexture);
+
+    // ViewToImage is in colour image coordinates. The depth map is the colour
+    // image centre-cropped to the depth aspect (see DeriveDepthIntrinsics), so
+    // move the three points into the crop.
+    const float SrcAspect = float(Frame.IntrinsicsWidth) / float(Frame.IntrinsicsHeight);
+    const float DepthAspect = float(W) / float(H);
+    float CropW = 1.f, CropH = 1.f; // fraction of the colour image the depth covers
+    if (DepthAspect > SrcAspect) CropH = SrcAspect / DepthAspect;
+    else                         CropW = DepthAspect / SrcAspect;
+    float ViewToDepth[6];
+    for (int32 i = 0; i < 3; ++i) {
+        ViewToDepth[i * 2]     = (Frame.ViewToImage[i * 2]     - (1.f - CropW) * 0.5f) / CropW;
+        ViewToDepth[i * 2 + 1] = (Frame.ViewToImage[i * 2 + 1] - (1.f - CropH) * 0.5f) / CropH;
+    }
+    SetViewToImage(ViewToDepth);
+}
+
+// The three points are where view corners (0,0), (1,0), (0,1) land in the image.
+void AARCameraFeed::SetViewToImage(const float ViewToImage[6]) {
+    const float* P = ViewToImage;
+    FeedMID->SetVectorParameterValue(TEXT("ViewToImageOrigin"),
+        FLinearColor(P[0], P[1], 0.f, 0.f));
+    FeedMID->SetVectorParameterValue(TEXT("ViewToImageAxes"),
+        FLinearColor(P[2] - P[0], P[3] - P[1], P[4] - P[0], P[5] - P[1]));
+}
+```
+- The feed actor is a post process: 
+```cpp
+    PostProcess = CreateDefaultSubobject<UPostProcessComponent>(TEXT("Feed Post Process"));
+    RootComponent = PostProcess;
+    // Unbound: applies to the whole view, wherever the actor is.
+    PostProcess->bUnbound = true;
+```
+- When the actor begins play it creates the material and registers itself as a listener for the broadcast from UARSessionStarter.
+  - When it ends play it unregisters itself and destroy the material, undoing BeginPlay changes
+- `SetFeedEnabled` Activates/Deactivates the feed, with `PostProcess->bEnabled` gating a lot of processes in the class.
+- `AARCameraFeed::HandleFrame` is the broadcast handler. It takes the `FARFrameData` that comes from SessionStarter and use it to generate the texture. The way it does varies
+with the type of feed to show (`UpdateColor` x `UpdateDepth`).
+
+- The material:
+I neeed to create a specific material for our actor. That material runs at post-processing and, for now, replaces the tonemapper:
+![Image description](./images/material_params.png)
+![Image description](./images/material_custom_node.png)
+I called this material `M_CameraFeed`.
+
+- The BP
+Next step is to create a BP deriving from AARCameraFeed, I called it BP_ARCameraFeed. Then set `FeedMaterial` to use `M_CameraFeed` and finally add the BP to the level at (0,0,0).
+
+- The result:
+Running in android we got our result:
+![Image description](./images/Screenshot_20261013_210644.png)
+
+The logs:
+```
+2026-10-13 21:06:45.042 26959-27232 UE                      dev.dongeronimo.unrealworld          D  [2026.10.14-00.06.45:042][764]LogBlueprintUserMessages: [BP_ARPawn_C_2147482419] [CamCheck] t=60.02 loc=X=-6.061 Y=4.247 Z=5.987 rot=P=-30.112 Y=-23.025 R=2.924
+2026-10-13 21:06:46.040 26959-27232 UE                      dev.dongeronimo.unrealworld          D  [2026.10.14-00.06.46:040][794]LogBlueprintUserMessages: [BP_ARPawn_C_2147482419] [CamCheck] t=61.023 loc=X=-6.008 Y=4.081 Z=6.148 rot=P=-29.929 Y=-22.907 R=2.579
+2026-10-13 21:06:47.040 26959-27232 UE                      dev.dongeronimo.unrealworld          D  [2026.10.14-00.06.47:040][824]LogBlueprintUserMessages: [BP_ARPawn_C_2147482419] [CamCheck] t=62.014 loc=X=-6.14 Y=4.275 Z=6.067 rot=P=-29.796 Y=-22.946 R=2.831
+2026-10-13 21:06:48.038 26959-27232 UE                      dev.dongeronimo.unrealworld          D  [2026.10.14-00.06.48:038][854]LogBlueprintUserMessages: [BP_ARPawn_C_2147482419] [CamCheck] t=63.02 loc=X=-6.164 Y=4.25 Z=6.105 rot=P=-29.781 Y=-23.017 R=2.837
+2026-10-13 21:06:49.044 26959-27232 UE                      dev.dongeronimo.unrealworld          D  [2026.10.14-00.06.49:044][884]LogBlueprintUserMessages: [BP_ARPawn_C_2147482419] [CamCheck] t=64.015 loc=X=-6.104 Y=4.205 Z=6.167 rot=P=-29.821 Y=-22.865 R=2.722
+2026-10-13 21:06:50.041 26959-27232 UE                      dev.dongeronimo.unrealworld          D  [2026.10.14-00.06.50:041][914]LogBlueprintUserMessages: [BP_ARPawn_C_2147482419] [CamCheck] t=65.024 loc=X=-5.866 Y=4.217 Z=5.88 rot=P=-30.681 Y=-22.854 R=2.889
+2026-10-13 21:06:51.045 26959-27232 UE                      dev.dongeronimo.unrealworld          D  [2026.10.14-00.06.51:045][944]LogBlueprintUserMessages: [BP_ARPawn_C_2147482419] [CamCheck] t=66.026 loc=X=-5.854 Y=4.425 Z=5.82 rot=P=-30.878 Y=-20.952 R=2.165
+2026-10-13 21:06:52.033 26959-27232 UE                      dev.dongeronimo.unrealworld          D  [2026.10.14-00.06.52:033][974]LogBlueprintUserMessages: [BP_ARPawn_C_2147482419] [CamCheck] t=67.008 loc=X=-5.517 Y=5.422 Z=5.124 rot=P=-34.935 Y=-12.695 R=-0.254
+```
+
+Notice that the image's colours are too strong as if the room was over illuminated. It's because the image is being gamma encoded twice:
+- The camera's YUV values are already gamma-encoded (sRGB), so the RGB the Custom node returns is gamma-encoded too.
+- The engine treats my output as linear light and encodes it to sRGB again on the way to the screen. Encoding values that are already encoded brightens the midtones and shadows.
+
+To fix that i did changes to ARCameraFeed and to the material:
+```cpp
+AARCameraFeed::AARCameraFeed() {
+    // Driven by OnARFrame, not by tick.
+    PrimaryActorTick.bCanEverTick = false;
+    PostProcess = CreateDefaultSubobject<UPostProcessComponent>(TEXT("Feed Post Process"));
+    RootComponent = PostProcess;
+    // Unbound: applies to the whole view, wherever the actor is.
+    PostProcess->bUnbound = true;
+    // Exposure still scales a Replacing the Tonemapper output. With an empty
+    // scene, auto exposure brightens all the way and the feed washes out
+    // (measured: x2.4). The camera already exposed the image, so fix the gain
+    // at 1: manual, no physical camera model, bias 0.
+    FPostProcessSettings& Settings = PostProcess->Settings;
+    Settings.bOverride_AutoExposureMethod = true;
+    Settings.AutoExposureMethod = AEM_Manual;
+    Settings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+    Settings.AutoExposureApplyPhysicalCameraExposure = false;
+    Settings.bOverride_AutoExposureBias = true;
+    Settings.AutoExposureBias = 0.f;
+}
+```
+and the material:
+```hlsl
+  float2 uv = ViewToImageOrigin.xy
+            + ViewUV.x * ViewToImageAxes.xy
+            + ViewUV.y * ViewToImageAxes.zw;
+  float  y = Texture2DSample(FeedY,  FeedYSampler,  uv).r;
+  float2 c = Texture2DSample(FeedUV, FeedUVSampler, uv).rg;
+  c = (VFirst > 0.5 ? c.yx : c) - 0.5;
+  float3 rgb = saturate(float3(y + 1.402 * c.y,
+                               y - 0.344 * c.x - 0.714 * c.y,
+                               y + 1.772 * c.x));
+  // Camera RGB is sRGB-encoded; the engine encodes our output again, so decode first.
+  float3 lo = rgb / 12.92;
+  float3 hi = pow((rgb + 0.055) / 1.055, 2.4);
+  return lerp(hi, lo, step(rgb, 0.04045));
+```
+
+and that fix the wrong colours.
+
 ### Data for the TSDF 
 
 ## Step 4 - Final touches
