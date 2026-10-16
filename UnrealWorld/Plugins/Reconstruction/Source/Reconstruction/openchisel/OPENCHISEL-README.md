@@ -1,0 +1,544 @@
+# OpenChisel, vendored fork
+
+The TSDF library from Klingensmith et al., *CHISEL: Real Time Large Scale 3D
+Reconstruction Onboard a Mobile Device using Spatially Hashed Signed Distance
+Fields* (RSS 2015). It is the reference implementation of the paper that
+`putorana::recon/README.md` explains.
+
+    https://github.com/personalrobotics/OpenChisel
+    commit 3a8f2fee985eea44c0bd5c3007af464e185f577b (25 Feb 2024)
+
+Only the `open_chisel/` package is taken. The sibling `chisel_ros/` package is a
+ROS node and is not vendored.
+
+MIT, © 2014 Matthew Klingensmith and Ivan Dryanovski. Upstream has no top-level
+`LICENSE` file. The licence lives in a banner at the head of every source file,
+and those banners are left intact.
+
+## Why a fork rather than a dependency
+
+It is not maintained as a library: there are no releases, no versioning, and the
+build is a catkin package that assumes a ROS workspace. Consuming it unmodified
+would mean either dragging catkin into an Android build or maintaining a patch
+set anyway. And the changes below are exactly the kind that cannot be made from
+outside a library, because they alter the layout of its types.
+
+Every change is annotated in place with a `LOCAL MODIFICATION:` comment
+explaining what it was and why it changed, so the reasoning survives even if this
+file is not read. The first two changes below are layout and dispatch work done
+before anything had run. The three after them came out of running it on a device,
+and each one is there because the reconstruction was visibly wrong without it.
+
+## What was changed, and what it bought
+
+### 1. Vestigial virtual destructors removed (16 classes)
+
+Upstream declares `virtual ~X()` on nearly every class. The whole codebase
+contains exactly **three** inheritance relationships, all of them in the
+Truncator/Weighter policy hierarchy dealt with below, so on the other sixteen
+classes the vtable pointer was paid for and never used.
+
+For most of those sixteen the cost is nothing: they are single heap objects, and
+8 bytes is noise. It matters enormously for two of them, because those two live
+in arrays of millions:
+
+| | upstream | here |
+|---|---|---|
+| `sizeof(DistVoxel)` | 16 | **8** |
+| `sizeof(ColorVoxel)` | 16 | **4** |
+| bytes per voxel | 32 | **12** |
+| a 16³ chunk (dist + colour) | 128 KB | **48 KB** |
+
+`DistVoxel` is two floats. Upstream spent 8 bytes of vtable pointer to carry 8
+bytes of payload, so half of every cache line the integration loop touched was
+vptr. `ColorVoxel` is four `uint8_t`, so 8 bytes of vptr for 4 bytes of colour,
+padded out to 16.
+
+At a working resolution this is the difference between a reconstruction that fits
+in a phone's memory budget and one that does not; put another way, **it buys back
+roughly one notch of voxel resolution.**
+
+For these two classes the destructor is deleted outright rather than merely
+un-`virtual`ed, which additionally makes them trivially destructible, so tearing
+down a `std::vector<DistVoxel>` becomes a no-op instead of a loop of empty calls
+over millions of elements.
+
+The library now emits **no vtables at all**.
+
+### 2. `Truncator` and `Weighter` collapsed into concrete value types
+
+This was worth more than the destructors, and it is not what the memory table
+above measures.
+
+`ProjectionIntegrator::Integrate` calls both of these **inside the per-voxel
+loop**:
+
+```cpp
+float truncation = truncator->GetTruncationDistance(depth);
+...
+voxel.Integrate(surfaceDist, weighter->GetWeight(surfaceDist, truncation));
+```
+
+A 16³ chunk is 4096 voxels, and every chunk in the frustum is swept every frame,
+so those two virtual calls ran millions of times per second on function bodies
+that are a handful of arithmetic operations. The dispatch was the smaller cost.
+The real loss was that the compiler could not inline the bodies into the loop,
+could not hoist the coefficient loads out of it, and could not vectorise across
+voxels.
+
+Worse, `QuadraticTruncator` computed its square as `pow(reading, 2)`. Behind a
+virtual boundary that call could not be folded away, so squaring a float was an
+actual `libm` call, per voxel.
+
+The fix rests on an observation: the quadratic truncation model *subsumes* the
+constant one, since a constant truncation is just `a = b = 0`. So one concrete
+class covers both with no loss of configurability, since the truncation model
+stays a runtime parameter and only the dispatch disappears. `Weighter` had
+exactly one implementation in the entire codebase, so the vtable there was
+carrying a single divide.
+
+  * `Truncator` is now concrete: `τ(d) = |a·d² + b·d + c| · s`, in Horner's form,
+    with a `Truncator::Constant(τ)` factory for the degenerate case.
+  * `Weighter` is now concrete: `w = weight / (2τ)`.
+  * `ConstantTruncator.h`, `QuadraticTruncator.h` and `ConstantWeighter.h` are
+    deleted.
+  * `ProjectionIntegrator` holds both **by value** instead of by `shared_ptr`,
+    which also removes a pointer chase from the hot path.
+
+The compiled library contains no calls to `pow`.
+
+### 3. Marching cubes shares vertices along topological edges
+
+`MarchingCubes.h`, `MarchingCubes.cpp`, `ChunkManager.cpp`.
+
+Upstream emits a triangle soup. Every triangle allocates three fresh vertices,
+so a vertex sitting where six triangles meet is stored six times with six
+identical normals, and the index buffer carries no information beyond `0, 1, 2,
+3, ...`. Upstream even asserts the property: `vertices.size() == indices.size()`.
+
+The fix keys each vertex on the **grid edge** it was interpolated on rather than
+on its position. A cube corner offset table plus the existing `edgeIndexPairs`
+gives the axis and the lower endpoint of any edge, which packs into a 64-bit key:
+
+```cpp
+static inline uint64_t EdgeKeyFor(const Eigen::Vector3i& cubeIndex, int edge);
+```
+
+Keying on topology rather than on coordinates matters. A position-based key needs
+an epsilon, and an epsilon on interpolated floats either merges vertices that
+should be distinct or fails to merge ones that should not be. Two cubes sharing
+an edge produce byte-identical keys with no tolerance involved.
+
+`ChunkManager::GenerateMesh` owns the map for the duration of one chunk and
+threads it through both the interior and border passes, then normalises the
+accumulated normals. Normals are accumulated **unnormalised** during meshing so
+that face contributions are area weighted, which is the standard result for
+shared-vertex normals and comes out for free.
+
+Measured on device: **4.08x to 4.69x** fewer vertices for the same geometry. A
+soup reads exactly 1.00 and a fully shared manifold surface reads about 6, since
+`V ≈ F/2` there. Mesh time went from 0.49 ms to 0.43 ms in the same test, and
+mesh memory for a room dropped from 17 MiB across 263 nodes to 4 MiB across 64.
+
+The upstream assert is replaced rather than deleted, since it was encoding a real
+invariant that simply changed shape:
+
+```cpp
+assert(indices.size() % 3 == 0);
+assert(vertices.size() <= indices.size());
+```
+
+### 4. Per-pixel integration weights
+
+`ProjectionIntegrator.h`.
+
+The depth path, `ProjectionIntegrator::Integrate`, passed a hardcoded weight:
+
+```cpp
+voxel.Integrate(surfaceDist, 1.0f);
+```
+
+The `weighter` member is consulted only from `IntegrateColor`. Any application
+using the depth-only path (which is this one) had its weighting policy silently
+ignored, and a configured `Weighter` did nothing at all.
+
+That is fixable in place by calling the weighter, but it does not go far enough
+for this application. ARCore ships a **confidence map** alongside raw depth, and
+its samples are not of equal quality: a reading from a textured surface and a
+reading from a blank painted wall arrive in the same image and deserve very
+different votes. The weighter's signature, `GetWeight(surfaceDist, truncation)`,
+has nowhere to put that.
+
+So the integrator takes an optional image of per-pixel weights:
+
+```cpp
+inline void SetWeights(const std::shared_ptr<const DepthImage<float> >& w);
+inline void ClearWeights();
+```
+
+Null restores upstream behaviour exactly, which is a weight of 1.0 everywhere. A
+weight of 0 means do not fuse this sample, which lets a caller reject a pixel
+without also blanking its depth, and that distinction is load bearing because the
+non-NaN extent of the depth map is what sizes the frustum.
+
+It is indexed at the same row and column the depth was read from, so it costs one
+array read and no additional projection.
+
+Why weighting rather than filtering the depth map upstream of the library: a hard
+threshold makes the reconstruction honest and full of holes. A floor is exactly
+the low-texture surface a confidence map is most pessimistic about, so any
+threshold high enough to suppress bad geometry deletes the good geometry in the
+same region. Measured at Google's recommended threshold of 128, 79% of samples in
+a frame were rejected and a tiled floor came back as disconnected islands.
+`putorana/recon/README.md` has the numbers.
+
+### 5. Mutable access to the dirty set
+
+`Chisel.h`, `GetMutableMeshesToUpdate()`.
+
+Upstream's only way to remesh is `UpdateMeshes()`, which does every dirty chunk
+and then clears the set. Integration marks the whole 3x3x3 neighbourhood of every
+chunk it touches, so sweeping a room dirties hundreds at once and meshing all of
+them inside one frame is a dropped frame.
+
+With mutable access a caller can take a bounded number per frame and leave the
+rest marked. `putorana::recon::Reconstruction::Remesh` does that, and its
+`README.md` documents the starvation bug that the obvious implementation of it
+contains.
+
+### 6. Space carving rebuilt, because upstream's cannot remove anything
+
+`DistVoxel.h`, `ProjectionIntegrator.h`.
+
+Space carving is one of the things the CHISEL paper contributes over plain
+KinectFusion. In the reference implementation it cannot delete a surface, for
+four independent reasons. Any one of them alone is enough.
+
+```cpp
+inline void Carve() { Integrate(0.0, 1.5); }
+```
+
+**It adds weight to the voxel it is erasing.** `Integrate` accumulates, so a
+voxel at weight 200 moves by 1.5/201.5, under one percent, and comes out heavier
+than it went in. Every attempt makes the next one weaker.
+
+**It pulls the SDF toward zero, which is the surface, not free space.** Combined
+with the eligibility test below, which only admits voxels already at or behind a
+surface, carving walks them asymptotically up to 0 from underneath and the sign
+never flips. Marching cubes keys on sign changes, so the triangle stays.
+
+```cpp
+if (voxel.GetWeight() > 0 && voxel.GetSDF() < 1e-5)
+```
+
+**That test is the wrong half of the population.** A voxel just in front of an
+object that has been taken away carries a small positive SDF and never qualifies,
+so the near face of anything removed is structurally uncarvable.
+
+**And the branch is unreachable at the configured distance.** Carving is an
+`else if` after a test on `truncation + diag`, where `diag` is `2*sqrt(3)*res`.
+At 4 cm voxels that is 0.1386 against a configured `carvingDist` of 0.05, so the
+parameter is inert and carving silently begins wherever the integration band
+happens to end. Raising `carvingDist` could only push the start further out.
+
+What runs here instead:
+
+  * `Carve(decay, minWeight)` **decays** the accumulated weight and `Reset`s the
+    voxel to unobserved once it falls below the floor. Observing free space is
+    evidence against what a voxel holds, not a competing measurement of it.
+    `ChunkManager` treats weight below `1e-15` as unobserved and skips the whole
+    cube, so that is what actually deletes geometry.
+  * The SDF test is gone. The weight test stays, since an unobserved voxel has
+    nothing to carve.
+  * `diag` is **one** voxel diagonal rather than two. Half a diagonal is what the
+    geometry justifies, since the test is on the voxel centre, but it was
+    measured too small on the device: marching cubes needs all eight corners of a
+    cube observed and the surface came back full of holes. One diagonal holds.
+  * The carve test is `truncation + diag + carvingDist`, so `carvingDist` is a
+    **dead zone above the integration band** instead of a threshold competing
+    with it. Sharing an exact boundary made voxels on it flip between integrated
+    and carved as depth noise crossed the line, which was visible as geometry
+    flickering with nothing moving. The gap makes that impossible in one frame,
+    and makes the parameter monotone in the direction its name implies.
+
+`DistVoxel::Integrate` also takes an optional weight ceiling, defaulting to 0
+which is upstream's unbounded running mean. Unbounded means a voxel observed
+three hundred times cannot be corrected by fresh evidence at all, which is the
+other half of why nothing ever went away.
+
+### 7. Colour, fused in the depth path instead of the colour path
+
+`camera/YuvColorImage.h` (new), `ProjectionIntegrator.h`, `ColorVoxel.h`,
+`ChunkManager.cpp`, `mesh/Mesh.h`.
+
+Upstream has a complete colour path and **none of it is used here**, because
+`ProjectionIntegrator::IntegrateColor` is a parallel copy of `Integrate` that
+received none of changes 4 and 6 above. It still pads the band by
+`2·sqrt(3)·res`, still ignores the per-pixel weights, still has no ceiling, and
+still carries the `GetSDF() < 1e-5` carve test that cannot remove a surface.
+Switching to it would trade every correction in this file for colour.
+
+So colour is fused **inside `Integrate`**, in the branch that has already decided
+the voxel is inside the truncation band and already projected it.
+
+  * **`YuvColorImage`** replaces `ColorImage` for this path. `ColorImage` assumes
+    an interleaved BGR buffer that it owns (`delete [] data`), and a phone camera
+    delivers semi-planar YUV 4:2:0 in memory the capture API reclaims on the next
+    frame. It carries borrowed plane pointers and converts on demand, BT.601
+    studio swing, matching the app's `composite.frag` coefficient for
+    coefficient — the reconstruction is drawn directly in front of the feed it
+    was sampled from, so the two conversions disagreeing is immediately visible.
+  * **No second projection.** It also carries the affine map from a depth pixel
+    to a colour pixel. Upstream projects every voxel a second time through a
+    separate colour camera, which is right for a rig and wrong for a phone: the
+    depth map is a centre crop of the same sensor's image, so the two cameras
+    share a pose and differ only in intrinsics, and two pinholes at one pose
+    relate by `u_c = (fx_c/fx_d)·u_d + (cx_c − (fx_c/fx_d)·cx_d)`. One multiply
+    and one add per axis, on a projection already paid for.
+  * **`ColorVoxel::Integrate` takes a weight ceiling**, mirroring `DistVoxel`.
+    Upstream's caller instead froze the colour with `if (GetWeight() < 5)`, so the
+    first five frames of a sweep decided a voxel's colour permanently, with
+    auto-exposure still settling. A ceiling keeps the average running.
+  * **Carving resets the colour.** `DistVoxel::Carve` resets the distance voxel;
+    the `ColorVoxel` at the same index is a separate array and knew nothing about
+    it, so a removed object's colour outlived its geometry.
+  * **`ChunkManager::InterpolateColor` was dimensionally wrong** in two
+    independent places and could not have returned a correct colour. It computed
+    `floor(x / resolution)`, a voxel index, and passed it to `GetColorVoxel`,
+    which takes metres — at 4 cm voxels that is a lookup 25× too far from the
+    origin, so all eight failed, the null test fired, and every call fell through
+    to the nearest-neighbour fallback. The interpolation weights mixed metres with
+    indices in the same way. It is rewritten on the centroid grid, which is the
+    grid marching cubes actually interpolates along, and **weighted by each
+    corner's own colour weight**: an unobserved corner holds `(0, 0, 0)`, and
+    blending that as though it were black produces dark fringing wherever colour
+    coverage lags geometry coverage.
+  * **`Mesh` gains `colorWeights`**, one float per vertex. `colors` alone cannot
+    distinguish a black surface from a voxel never seen in colour, and the
+    renderer needs that to know whether to trust the colour or fall back. It
+    saturates at `SetColorFullConfidenceWeight`, which is deliberately **not** the
+    integrator's ceiling: the ceiling is about keeping the average correctable and
+    wants to be large, while this asks whether there is a colour to show and is
+    satisfied by a handful of samples. Wiring them together made every newly
+    meshed triangle draw as flat fallback colour for a second, which on the device
+    was a blue fringe crawling along the leading edge of each sweep.
+
+### 8. Two defects fixed, because Unreal will not compile around them
+
+Both were already here, both were silent under the CMake build's `-w`, and both
+had to move because Unreal 5.7 promotes them to errors and offers no way to turn
+that off for this module.
+
+**Five range loops copied every element.** In `Chisel.cpp` (three) and
+`ChunkManager.cpp` (two):
+
+    for (const std::pair<ChunkID, ChunkPtr>& chunk : chunks)
+
+A map's `value_type` is `pair<const K, V>`, not `pair<K, V>`, so that reference
+cannot bind to the element and clang materialises a temporary for every
+iteration. In the `ChunkManager.cpp:736` case that is an `Eigen::Vector3i` copy
+and a `shared_ptr` refcount round trip per chunk, per call. All five are now
+`const auto&`, which binds to the element itself.
+
+Clang reports it as `-Wrange-loop-construct`. Unreal cannot silence it: the
+`RangeLoopConstructWarningLevel` knob in `CppCompileWarnings.cs` carries a
+`[WarningsIntelCompiler]` attribute and no `[WarningsVCClang]`, so setting it
+emits no flag on a clang toolchain.
+
+**`SaveMeshPLYASCII` fell off the end of a `bool` function.** `PLY.cpp:87`
+returned `false` on a bad stream and then returned nothing at all on success,
+which is undefined behaviour. It returns `true`. Nothing in this project calls
+the PLY writer, which is presumably why it survived a decade.
+
+### 9. Integration walks the observed rays instead of filling the frustum
+
+`Chisel.h::IntegrateDepthScan`. Ported from the Vulkan project, where it was
+measured; the numbers below are that device's.
+
+Upstream builds a `Frustum` from the depth image's own minimum and maximum and
+asks `GetChunkIDsIntersecting` for every chunk that solid cone crosses. Then it
+projects **all 4096 voxels of every one of them**, surface nearby or not. On
+device that was 160 to 360 chunks per frame, of which 88 to 94 percent were
+empty: allocated, fully projected, and garbage collected. Integration cost
+159.8 ms per depth frame, at 4 to 5 fps in an already-scanned room.
+
+Two independent reasons, and the fix removes both:
+
+  * the far plane is the maximum over the **entire image**, so the cone runs to
+    2.4 m in every direction even where the real surface is at 0.5 m;
+  * two thirds of ARCore's samples carry no depth estimate at all, and the cone
+    covers those directions anyway.
+
+Cost therefore followed the cone's **volume**, growing with the cube of whatever
+the sensor happened to see furthest that frame. That is what made raising the
+far plane prohibitive.
+
+Now each valid depth pixel gives a ray, the ray is walked from the near plane to
+just past its own surface, and the chunks along it are the candidate set. Cost
+follows the observed **surface**.
+
+**Why the walk starts at the camera and not at the truncation band.** This is the
+part that looks like waste and is not. Collecting only the band around each
+surface point would switch carving off silently: `ProjectionIntegrator` carves on
+`surfaceDist > truncation + diag + carvingDist`, which is every voxel *between*
+the camera and the surface, not a band around it. Its config, its counters and
+its probe would all stay in place, reporting success.
+
+**Only the band may create a chunk.** The remaining waste after the walk was
+chunks in the carving stretch that did not exist yet, and carving an unallocated
+chunk has nothing to remove: creating one costs an allocation plus a full
+4096-voxel pass to discover it is still empty. So the walk records, per
+candidate, whether *any* ray put its truncation band there, and that is the
+union across rays. Chunks that already exist are integrated as before no matter
+which stretch reached them, because carving those is the whole point. No
+correctness change.
+
+What it cost: carving is slower to trigger and wants more movement, because a
+chunk in free space is only carved when a *sampled* ray passes through it and
+`pixelStride` skips rays the volume fill covered for free.
+
+Measured on the Vulkan project, same range and same map size:
+
+| | before | after |
+|---|---|---|
+| integrate | 159.8 ms | 4.8 ms |
+| chunks/frame | 160–360 | 20–26, then 16–18 |
+| wasted | 88–94% | 18–24% |
+| frame rate | 4–5 fps | 30 fps |
+
+`GetLastChunksTouched` and `GetLastChunksDiscarded` are the probe. Milliseconds
+on their own compare nothing between scenes — the same room costs five times
+more looking down its length than at a wall an arm away — so **µs per chunk
+touched** is the quantity, and the discarded share is what says the walk is
+still working.
+
+`IntegrateDepthScanColor` is deliberately untouched and still fills the frustum.
+Colour is fused inside the depth path here (section 7), so that overload has no
+call site.
+
+## Verified
+
+All 16 translation units compile clean, zero errors and zero failures, for
+`aarch64-linux-android33`, NDK 28.2.13676358, clang `-std=c++17 -O2`. Both before
+and after the changes above; the refactor did not fix a build problem, because
+there was not one. The sizes in the table were measured on that target, not
+assumed.
+
+It has since been run. The library reconstructs a room on a Samsung SM-S731B at
+30 fps with integration taking 19 ms for 111 chunks in view, and the dedup ratio
+above is a device measurement rather than a prediction.
+
+**Change 7, colour, has also been run**, on the same device.
+
+The depth-to-colour affine map comes out at scale `(4.000, 4.000)` with offset
+`(0.0, 60.0)`. The equal scales were the test; the offset is the stronger result,
+because 60 is exactly the `cropTop` that `ar::Subsystem` derives from the two
+aspect ratios, by a completely separate calculation that never touches a focal
+length. Two independent derivations landing on the same crop is what confirms the
+model rather than the arithmetic.
+
+Meshing measured **0.18 ms per chunk** including `ColorizeMesh`, against a remesh
+budget of 8 chunks a frame, so 1.4 ms against integration's 20. Colour did not
+show up in integration at all: it rose from 18 to 23 ms over a session in which
+the furthest accepted sample went from 2.25 m to 2.93 m, and frustum volume grows
+with the cube of that, so the cost rose by less than the volume alone predicts.
+
+**One caveat on the meshing number, which is not yet retired.** It was taken over
+chunks averaging 45 vertices, early in a scan. `GenerateMesh` sweeps a fixed 4096
+voxels per chunk while `ColorizeMesh` and `ComputeNormalsFromGradients` are
+proportional to the vertex count, so the part colour added was a tenth of what it
+will be on a chunk holding 450. The `RECONPROBE remesh` line is there to be read
+again on a full room.
+
+## This library is always built optimised
+
+Even in Debug. `-O3 -DNDEBUG`, while the application around it keeps `-g` and no
+optimisation, verified in the same build:
+
+| translation unit | flags |
+|---|---|
+| `open_chisel/src/ProjectionIntegrator.cpp` | `-O3 -DNDEBUG -g` |
+| `putorana/graphics/ArCamera.cpp` | `-g` |
+
+Eigen is an expression-template library and is not merely slower unoptimised, it
+is categorically slower; a debug build of the integrator is slow enough to
+disguise real performance problems.
+
+The full reasoning, meaning why this is safe on Android and not on Windows and
+why the `NDEBUG` half of it forces `putorana::recon` to be a facade that never
+leaks an Eigen type outward, is in `CMakeLists.txt` next to the code that does
+it, and in `putorana/recon/README.md` under *"The boundary, and why it is also
+a build setting"*.
+
+The short version: **anything that includes `<open_chisel/...>` must also link
+`open_chisel_fast_flags`**, or it will parse Eigen's headers with a different
+`NDEBUG` than this library did and quietly violate the ODR.
+
+## Known upstream problems left alone
+
+Deliberately not fixed, so that the diff stays reviewable. All of these are
+small; the one that was behavioural and cost real time is now section 9 above
+rather than an entry here.
+
+  * **`Chisel.h::IntegrateDepthScanColor` still fills the frustum**, with the
+    far plane taken from the maximum value in the depth image. That is the defect
+    section 9 removed from `IntegrateDepthScan`, left in place in the colour
+    overload because nothing calls it: colour is fused in the depth path here.
+    Anyone who ever does call it inherits the whole problem, so read section 9
+    first.
+
+Small, and worth revisiting once there is something running to measure:
+
+  * **`threading/Threading.h`** looks alarming and is inert. Read carefully
+    before spending time on it:
+
+        group = max(max(1, threshold), N / nthreads);   // = max(1000, N/16)
+        for (it = first; it < last - group; ...)        // no iterations if group >= N
+
+    The `nthreads = 16` default is not what gates this. `threshold = 1000` is.
+    Below ~1000 items `last - group` lands at or before `first`, the loop never
+    runs, and everything executes on the calling thread. **You need >16000 items
+    before all 16 threads appear.** Measured partitioning:
+
+    | items | threads spawned |
+    |---|---|
+    | ≤ 1000 | **0** |
+    | 1001 – 2000 | 1 |
+    | 5000 | 4 |
+    | 16001 | 16 |
+
+    The items are the chunks a frame touches: a few hundred at 4 cm voxels when
+    this was written against the frustum fill, order 1000 at 2 cm, and now tens
+    of chunks since section 9 replaced the fill with the ray walk. So it spawns
+    no threads at all, and it is now further from the cliff rather than nearer.
+
+    There is also exactly one live call site (`Chisel.h`,
+    `IntegrateDepthScanColor`); the depth-only path we would actually use, and
+    the mesh update path, already have it commented out upstream. And the live
+    one takes a mutex immediately after fanning out, so it is largely serialised
+    regardless.
+
+    Left alone deliberately. Not "threading to fix later". There is no threading
+    here to fix. If integration ever measures too slow, the levers in order are:
+    integrate at 5–10 Hz instead of per frame (depth is highly redundant
+    frame-to-frame, and this is free), then voxel size, then marching cubes,
+    which is the part that will actually hurt. Real parallelism belongs after all
+    of those, and would need a persistent pool with atomic work claiming rather
+    than a bigger `nthreads`: phone cores are asymmetric, so equal static blocks
+    leave the big cores idling behind the little ones no matter how the count is
+    chosen.
+  * **`typedef size_t VertIndex`** in `mesh/Mesh.h`, 8 bytes per index, feeding
+    a Vulkan index buffer that wants `VK_INDEX_TYPE_UINT32`. Costs a conversion
+    pass on every mesh upload.
+  * **`shared_ptr<Chunk>`** in the chunk hash map, so chunk lookups touch an
+    atomic refcount.
+  * **Eigen throughout**, where the rest of this project uses GLM. The surface is
+    small enough to port (see the note in `CMakeLists.txt`), but there is no
+    reason to until the extra dependency actually hurts.
+
+## Updating from upstream
+
+There is no meaningful upstream cadence to follow. The repository sees a commit
+every year or two. If you ever do need to re-sync, the changes here are
+mechanical enough to reapply by hand: grep for `LOCAL MODIFICATION:` to find all
+of them.

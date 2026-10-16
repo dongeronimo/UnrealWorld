@@ -153,6 +153,9 @@ void UARSessionStarter::ReadAndBroadcastFrame(UWorld* World) {
         ArImage_getPlaneRowStride(Session, DepthImage, 0, &Data.DepthRowStrideBytes);
         ArImage_getPlaneData(Session, DepthImage, 0, &Bytes, &Length);
         Data.DepthMm = reinterpret_cast<const uint16*>(Bytes);
+        int64_t DepthTimestampNs = 0;
+        ArImage_getTimestamp(Session, DepthImage, &DepthTimestampNs);
+        Data.DepthTimestampNs = DepthTimestampNs;
         DeriveDepthIntrinsics(Data);
 
         if (ArFrame_acquireRawDepthConfidenceImage(Session, Frame, &ConfidenceImage) == AR_SUCCESS)

@@ -1,0 +1,19 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "Reconstruction",
+	"Description": "TSDF reconstruction of the real world: ARCore frames in, chunk meshes out. OpenChisel (ToySoldiers' fork) vendored inside.",
+	"Category": "AR",
+	"CreatedBy": "dongeronimo",
+	"EnabledByDefault": true,
+	"CanContainContent": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "Reconstruction",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault"
+		}
+	]
+}

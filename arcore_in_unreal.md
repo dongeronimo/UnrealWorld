@@ -1230,13 +1230,5 @@ and the material:
 
 and that fix the wrong colours.
 
-### Data for the TSDF 
-
-## Step 4 - Final touches
-
-We already have all that we need to start implementing the TSDF based space reconstruction or use AR Planes if we so desire, this section here is just final touches and cosmetics
-
-### Switching between RGB and depth feeds
-
-### Turning logs on/off
+With that we finish the journey to get this shit working. All would be easier if i had a build-from-source of the engine, something that I can't do because I'm poor and my disk is small. And it would be even easier if the template actually worked as intended out of the box. Anyway it's done.
 

@@ -21,6 +21,7 @@ enum class EARFeedSource : uint8 {
 // Material parameters it sets:
 //   Color: FeedY (G8), FeedUV (R8G8), VFirst (1 = NV21, bytes are V,U)
 //   Depth: FeedDepth (G16, value * 65535 = millimetres, 0 = no estimate)
+//          FeedConfidence (G8, 0..1, 1 = most confident)
 //   Both:  ViewToImageOrigin (xy), ViewToImageAxes (xy = +view x, zw = +view y)
 //          image uv = Origin.xy + ViewUV.x * Axes.xy + ViewUV.y * Axes.zw
 UCLASS()
@@ -50,6 +51,8 @@ private:
     void UpdateDepth(const FARFrameData& Frame);
     void SetViewToImage(const float ViewToImage[6]);
 
+
+
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UPostProcessComponent> PostProcess;
 
@@ -62,6 +65,8 @@ private:
     TObjectPtr<UTexture2D> UVTexture;
     UPROPERTY(Transient)
     TObjectPtr<UTexture2D> DepthTexture;
+    UPROPERTY(Transient)
+    TObjectPtr<UTexture2D> ConfidenceTexture;
 
     FDelegateHandle FrameHandle;
 };

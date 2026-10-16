@@ -19,6 +19,10 @@ struct FARFrameData
     // Raw depth in millimetres, 0 = no estimate. Null when ARCore has none
     // this frame, which is normal whenever the phone is still.
     const uint16* DepthMm = nullptr;
+    // When ARCore produced this depth image. Depth updates slower than the
+    // camera, so consecutive frames can carry the same one: same timestamp,
+    // same image. Integrating it twice would carve twice.
+    int64 DepthTimestampNs = 0;
     int32 DepthWidth = 0, DepthHeight = 0, DepthRowStrideBytes = 0;
     // ARCore has no depth intrinsics API; these are derived from the colour ones.
     float DepthFx = 0, DepthFy = 0, DepthCx = 0, DepthCy = 0;

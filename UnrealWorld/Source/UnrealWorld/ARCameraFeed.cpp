@@ -1,10 +1,16 @@
-#include "ARCameraFeed.h"
+﻿#include "ARCameraFeed.h"
 #include "ARSessionStarter.h"
 #include "Components/PostProcessComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Texture2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
-
+#include "HAL/IConsoleManager.h"
+#include "EngineUtils.h"   // TActorIterator
+static TAutoConsoleVariable<int32> CVarFeedSource(
+    TEXT("ar.Feed.Source"),
+    0,
+    TEXT("0 = Color, 1 = Depth"),
+    ECVF_Default);
 // (Re)creates the texture when the size changes, which in practice is the
 // first frame only.
 static UTexture2D* EnsureTexture(TObjectPtr<UTexture2D>& Texture, int32 Width, int32 Height,
@@ -68,6 +74,7 @@ void AARCameraFeed::BeginPlay() {
     }
     if (UARSessionStarter* Starter = GetGameInstance()->GetSubsystem<UARSessionStarter>())
         FrameHandle = Starter->OnARFrame.AddUObject(this, &AARCameraFeed::HandleFrame);
+
 }
 
 void AARCameraFeed::EndPlay(const EEndPlayReason::Type EndPlayReason) {
@@ -76,7 +83,7 @@ void AARCameraFeed::EndPlay(const EEndPlayReason::Type EndPlayReason) {
         if (UARSessionStarter* Starter = GameInstance->GetSubsystem<UARSessionStarter>())
             Starter->OnARFrame.Remove(FrameHandle);
     FrameHandle.Reset();
-    Super::EndPlay(EndPlayReason);
+
 }
 
 void AARCameraFeed::SetFeedEnabled(bool bEnabled) {
@@ -117,6 +124,12 @@ void AARCameraFeed::UpdateDepth(const FARFrameData& Frame) {
     UploadPlane(DepthTexture, reinterpret_cast<const uint8*>(Frame.DepthMm),
         Frame.DepthRowStrideBytes, W * 2, H, 2);
     FeedMID->SetTextureParameterValue(TEXT("FeedDepth"), DepthTexture);
+    // Same size as the depth map, one byte per pixel, 255 = most confident.
+    if (Frame.Confidence) {
+        EnsureTexture(ConfidenceTexture, W, H, PF_G8, TF_Nearest);
+        UploadPlane(ConfidenceTexture, Frame.Confidence, Frame.ConfidenceRowStrideBytes, W, H, 1);
+        FeedMID->SetTextureParameterValue(TEXT("FeedConfidence"), ConfidenceTexture);
+    }
 
     // ViewToImage is in colour image coordinates. The depth map is the colour
     // image centre-cropped to the depth aspect (see DeriveDepthIntrinsics), so
@@ -142,3 +155,4 @@ void AARCameraFeed::SetViewToImage(const float ViewToImage[6]) {
     FeedMID->SetVectorParameterValue(TEXT("ViewToImageAxes"),
         FLinearColor(P[2] - P[0], P[3] - P[1], P[4] - P[0], P[5] - P[1]));
 }
+

@@ -18,6 +18,8 @@ public class UnrealWorld : ModuleRules
             "RenderCore",         // ENQUEUE_RENDER_COMMAND, FlushRenderingCommands
             "RHI",                // FRHICommandListImmediate
             "HeadMountedDisplay", // IXRCamera::GetPassthroughCameraUVs_RenderThread        
+            "Reconstruction",     // FTsdfReconstruction, the TSDF (OpenChisel inside)
+            "RealtimeMeshComponent", // chunk meshes, updated in place on every remesh
         });
 
         if (Target.Platform == UnrealTargetPlatform.Android)
