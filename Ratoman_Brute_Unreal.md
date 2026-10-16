@@ -113,11 +113,11 @@ Then import the three animation FBX files onto `Ratoman_Brute_Skeleton`. In Inte
 animation import at the existing skeleton and **turn mesh import off**. The two `Expressoes_*` files
 carry the mesh as well (it's how the morph curves travel), and you don't want a second copy of the
 character.
-- [ ] **The dance** plays at about 15 s, and the skin follows. The forearms and thighs will look slightly
+- [x] **The dance** plays at about 15 s, and the skin follows. The forearms and thighs will look slightly
       stiff when twisted; section 5 fixes that.
-- [ ] **`Expressoes_teste`:** the face moves, the ears pin and droop, and the jaw opens. In the
+- [x] **`Expressoes_teste`:** the face moves, the ears pin and droop, and the jaw opens. In the
       animation's **Curves** panel you see the morph curves (`snarl_L`, etc.).
-- [ ] **`Expressoes_poses`** is **5 frames** long.
+- [x] **`Expressoes_poses`** is **5 frames** long.
 
 If the reference pose shows a T-pose instead of the A-pose, *Use T0 As Ref Pose* was on. Reimport.
 
