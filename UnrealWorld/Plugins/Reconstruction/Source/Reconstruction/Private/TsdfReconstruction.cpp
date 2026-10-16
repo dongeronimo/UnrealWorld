@@ -6,6 +6,7 @@ THIRD_PARTY_INCLUDES_START
 #include <open_chisel/ProjectionIntegrator.h>
 #include <open_chisel/camera/DepthImage.h>
 #include <open_chisel/camera/PinholeCamera.h>
+#include <open_chisel/camera/YuvColorImage.h>
 #include <open_chisel/truncation/Truncator.h>
 #include <open_chisel/weighting/Weighter.h>
 THIRD_PARTY_INCLUDES_END
@@ -34,6 +35,47 @@ namespace
         T.linear() = Rotation.toRotationMatrix() * Eigen::DiagonalMatrix<float, 3>(1.0f, -1.0f, -1.0f);
         T.translation() = Eigen::Vector3f(Pose[4], Pose[5], Pose[6]);
         return T;
+    }
+
+    // The camera image as the integrator samples it, or an invalid one.
+    //
+    // The depth map is a centre crop of this same image, resampled, so the two
+    // share a pose and differ only in intrinsics. Two pinholes at one pose relate
+    // by an affine map on pixels:
+    //     u_colour = (fx_c / fx_d) * u_depth + (cx_c - (fx_c / fx_d) * cx_d)
+    // which is what YuvColorImage applies to the projection the depth path has
+    // already done. See YuvColorImage.h.
+    chisel::YuvColorImage ToColorImage(const FTsdfColorFrame& C, const FTsdfDepthFrame& D)
+    {
+        chisel::YuvColorImage Image;
+        if (!C.Y || !C.UV || C.Width <= 0 || C.Height <= 0 || C.YRowStride <= 0 || C.UVRowStride <= 0)
+            return Image;
+        // A zero here would clamp every voxel to one edge pixel.
+        if (C.Fx <= 0 || C.Fy <= 0 || D.Fx <= 0 || D.Fy <= 0)
+            return Image;
+        // Intrinsics are expressed against IntrinsicsWidth x IntrinsicsHeight,
+        // which ARCore says is the CPU image. If it ever isn't, rescale rather
+        // than paint colour scaled by their ratio.
+        const float Sx = C.IntrinsicsWidth > 0 ? float(C.Width) / C.IntrinsicsWidth : 1.0f;
+        const float Sy = C.IntrinsicsHeight > 0 ? float(C.Height) / C.IntrinsicsHeight : 1.0f;
+        Image.luma = C.Y;
+        Image.lumaRowStride = C.YRowStride;
+        Image.chroma = C.UV;
+        Image.chromaRowStride = C.UVRowStride;
+        Image.vFirst = C.bVFirst;
+        Image.width = C.Width;
+        Image.height = C.Height;
+        Image.scaleX = C.Fx * Sx / D.Fx;
+        Image.offsetX = C.Cx * Sx - Image.scaleX * D.Cx;
+        Image.scaleY = C.Fy * Sy / D.Fy;
+        Image.offsetY = C.Cy * Sy - Image.scaleY * D.Cy;
+        return Image;
+    }
+
+    uint8 ToByte(float Unit)
+    {
+        // Rounded, so a channel that interpolated to exactly 1 lands on 255.
+        return static_cast<uint8>(FMath::Clamp(Unit, 0.0f, 1.0f) * 255.0f + 0.5f);
     }
 }
 
@@ -75,9 +117,10 @@ FTsdfReconstruction::FTsdfReconstruction(const FTsdfConfig& Config)
     FImpl& I = *Impl;
     I.Config = Config;
     const Eigen::Vector3i ChunkSize(Config.ChunkVoxels, Config.ChunkVoxels, Config.ChunkVoxels);
-    // No colour yet: geometry first. Fixed at construction, chunks allocate
-    // their colour arrays (or don't) when they're created.
-    I.Chisel = std::make_unique<chisel::Chisel>(ChunkSize, Config.VoxelMetres, false);
+    // Colour is fixed at construction: chunks allocate their colour arrays (or
+    // don't) when they're created. It also makes RecomputeMesh colourise.
+    I.Chisel = std::make_unique<chisel::Chisel>(ChunkSize, Config.VoxelMetres, Config.bColor);
+    I.Chisel->GetMutableChunkManager().SetColorFullConfidenceWeight(Config.ColorFullConfidenceWeight);
 
     I.Integrator.SetCentroids(I.Chisel->GetChunkManager().GetCentroids());
     I.Integrator.SetTruncator(chisel::Truncator::Constant(Config.TruncationMetres));
@@ -87,6 +130,7 @@ FTsdfReconstruction::FTsdfReconstruction(const FTsdfConfig& Config)
     I.Integrator.SetCarvingDist(Config.CarvingDistance);
     I.Integrator.SetCarvingDecay(Config.CarvingDecay, Config.CarvingMinWeight, Config.CarvingRate);
     I.Integrator.SetMaxWeight(Config.MaxWeight);
+    I.Integrator.SetColorMaxWeight(Config.ColorMaxWeight);
 
     I.Camera.SetNearPlane(Config.NearPlane);
     I.Camera.SetFarPlane(Config.FarPlane);
@@ -170,8 +214,14 @@ bool FTsdfReconstruction::Integrate(const FTsdfDepthFrame& Frame)
     I.Camera.SetWidth(Frame.Width);
     I.Camera.SetHeight(Frame.Height);
 
+    // Borrowed pointers into this frame's camera image: set for this one call
+    // and cleared right after, so nothing can read them once ARCore takes the
+    // image back.
+    if (C.bColor)
+        I.Integrator.SetColorImage(ToColorImage(Frame.Color, Frame));
     const double Start = FPlatformTime::Seconds();
     I.Chisel->IntegrateDepthScan<float>(I.Integrator, I.Depth, ToExtrinsic(Frame.SensorPose), I.Camera);
+    I.Integrator.ClearColorImage();
     I.Stats.IntegrateMs = (FPlatformTime::Seconds() - Start) * 1000.0;
     I.Stats.ChunksTouched = static_cast<int32>(I.Chisel->GetLastChunksTouched());
     I.Stats.ChunksDiscarded = static_cast<int32>(I.Chisel->GetLastChunksDiscarded());
@@ -252,12 +302,136 @@ bool FTsdfReconstruction::GetChunkMesh(const FIntVector& Key, FTsdfChunkMesh& Ou
     Out.Indices.SetNumUninitialized(IndexCount);
     for (int32 Idx = 0; Idx < IndexCount; ++Idx)
         Out.Indices[Idx] = static_cast<uint32>(Mesh.indices[Idx]);
+
+    // Some colours and not all of them would be a bug, and reading past the end
+    // of a short vector the silent kind; no colours at all is colour off.
+    Out.Colors.Reset();
+    if (Mesh.colors.size() == Mesh.vertices.size() && Mesh.colorWeights.size() == Mesh.vertices.size())
+    {
+        Out.Colors.SetNumUninitialized(VertexCount);
+        for (int32 V = 0; V < VertexCount; ++V)
+        {
+            const chisel::Vec3& Rgb = Mesh.colors[V];
+            Out.Colors[V] = FColor(ToByte(Rgb.x()), ToByte(Rgb.y()), ToByte(Rgb.z()), ToByte(Mesh.colorWeights[V]));
+        }
+    }
     return true;
 }
 
 FVector3f FTsdfReconstruction::GetChunkOrigin(const FIntVector& Key) const
 {
     return Impl->OriginOf(ToChunkId(Key));
+}
+
+void FTsdfReconstruction::Export(FTsdfSnapshot& Out) const
+{
+    const FImpl& I = *Impl;
+    Out.Config = I.Config;
+    Out.Chunks.Reset();
+    const int32 N = I.Config.ChunkVoxels * I.Config.ChunkVoxels * I.Config.ChunkVoxels;
+    const chisel::ChunkMap& Chunks = I.Chisel->GetChunkManager().GetChunks();
+    Out.Chunks.Reserve(static_cast<int32>(Chunks.size()));
+    for (const auto& Entry : Chunks)
+    {
+        const chisel::ChunkPtr& Chunk = Entry.second;
+        if (!Chunk || !Chunk->HasVoxels() || static_cast<int32>(Chunk->GetVoxels().size()) != N)
+            continue;
+        FTsdfChunkVoxels& Dst = Out.Chunks.AddDefaulted_GetRef();
+        Dst.Key = ToKey(Entry.first);
+        Dst.Sdf.SetNumUninitialized(N);
+        Dst.Weight.SetNumUninitialized(N);
+        const std::vector<chisel::DistVoxel>& Voxels = Chunk->GetVoxels();
+        for (int32 V = 0; V < N; ++V)
+        {
+            Dst.Sdf[V] = Voxels[V].GetSDF();
+            Dst.Weight[V] = Voxels[V].GetWeight();
+        }
+        if (Chunk->HasColors())
+        {
+            Dst.Rgbw.SetNumUninitialized(N * 4);
+            for (int32 V = 0; V < N; ++V)
+            {
+                const chisel::ColorVoxel& Colour = Chunk->GetColorVoxel(static_cast<chisel::VoxelID>(V));
+                uint8* Px = &Dst.Rgbw[V * 4];
+                Px[0] = Colour.GetRed();
+                Px[1] = Colour.GetGreen();
+                Px[2] = Colour.GetBlue();
+                Px[3] = Colour.GetWeight();
+            }
+        }
+    }
+}
+
+bool FTsdfReconstruction::Import(const FTsdfSnapshot& Snapshot, FString& OutError)
+{
+    FImpl& I = *Impl;
+    if (Snapshot.Config.ChunkVoxels != I.Config.ChunkVoxels || Snapshot.Config.VoxelMetres != I.Config.VoxelMetres)
+    {
+        OutError = FString::Printf(TEXT("snapshot is %d^3 voxels of %f m, this reconstruction is %d^3 of %f m"),
+            Snapshot.Config.ChunkVoxels, Snapshot.Config.VoxelMetres, I.Config.ChunkVoxels, I.Config.VoxelMetres);
+        return false;
+    }
+    const int32 N = I.Config.ChunkVoxels * I.Config.ChunkVoxels * I.Config.ChunkVoxels;
+    for (const FTsdfChunkVoxels& Src : Snapshot.Chunks)
+    {
+        if (Src.Sdf.Num() != N || Src.Weight.Num() != N || (Src.Rgbw.Num() != 0 && Src.Rgbw.Num() != N * 4))
+        {
+            OutError = FString::Printf(TEXT("chunk %s has the wrong number of voxels"), *Src.Key.ToString());
+            return false;
+        }
+    }
+
+    // Replace, not merge: what's loaded is the whole world.
+    I.Chisel->Reset();
+    I.RemeshQueue.clear();
+    I.Live.clear();
+    chisel::ChunkManager& Chunks = I.Chisel->GetMutableChunkManager();
+    int32 ColourDiscarded = 0;
+    for (const FTsdfChunkVoxels& Src : Snapshot.Chunks)
+    {
+        const chisel::ChunkID Id = ToChunkId(Src.Key);
+        Chunks.CreateChunk(Id);
+        const chisel::ChunkPtr Chunk = Chunks.GetChunk(Id);
+        if (!Chunk || static_cast<int32>(Chunk->GetVoxels().size()) != N)
+        {
+            OutError = FString::Printf(TEXT("could not create chunk %s"), *Src.Key.ToString());
+            return false;
+        }
+        for (int32 V = 0; V < N; ++V)
+        {
+            chisel::DistVoxel& Voxel = Chunk->GetDistVoxelMutable(static_cast<chisel::VoxelID>(V));
+            Voxel.SetSDF(Src.Sdf[V]);
+            Voxel.SetWeight(Src.Weight[V]);
+        }
+        if (Src.Rgbw.Num() > 0)
+        {
+            // A reconstruction built with colour off has chunks with nowhere
+            // to put it.
+            if (!Chunk->HasColors())
+            {
+                ++ColourDiscarded;
+            }
+            else
+            {
+                for (int32 V = 0; V < N; ++V)
+                {
+                    const uint8* Px = &Src.Rgbw[V * 4];
+                    chisel::ColorVoxel& Colour = Chunk->GetColorVoxelMutable(static_cast<chisel::VoxelID>(V));
+                    Colour.SetRed(Px[0]);
+                    Colour.SetGreen(Px[1]);
+                    Colour.SetBlue(Px[2]);
+                    Colour.SetWeight(Px[3]);
+                }
+            }
+        }
+        // Straight onto the remesh cycle: no integration is coming to dirty them.
+        I.RemeshQueue.push_back(Id);
+    }
+    I.Stats = FTsdfStats();
+    I.Stats.ChunkCount = static_cast<int32>(Chunks.GetChunks().size());
+    if (ColourDiscarded > 0)
+        OutError = FString::Printf(TEXT("%d chunks carried colour this reconstruction can't hold (colour is off)"), ColourDiscarded);
+    return true;
 }
 
 int32 FTsdfReconstruction::GetPendingRemeshCount() const

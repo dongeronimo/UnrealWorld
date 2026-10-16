@@ -30,7 +30,7 @@ AReconChunkActor::AReconChunkActor() {
 }
 
 void AReconChunkActor::SetGeometry(const TArray<FVector3f>& Positions, const TArray<FVector3f>& Normals,
-    const TArray<uint32>& Triangles, UMaterialInterface* Material) {
+    const TArray<FColor>& Colors, const TArray<uint32>& Triangles, UMaterialInterface* Material) {
     if (Positions.Num() == 0 || Triangles.Num() < 3) {
         ClearGeometry();
         return;
@@ -46,9 +46,15 @@ void AReconChunkActor::SetGeometry(const TArray<FVector3f>& Positions, const TAr
     {
         RealtimeMesh::TRealtimeMeshBuilderLocal<uint32> Builder(StreamSet);
         Builder.EnableTangents();
+        Builder.EnableColors();
         Builder.EnablePolyGroups();
+        // Always a colour stream, so the section's layout never changes
+        // between updates whether or not this mesh has colours.
+        const bool bHasColors = Colors.Num() == Positions.Num();
         for (int32 V = 0; V < Positions.Num(); ++V)
-            Builder.AddVertex(Positions[V]).SetNormalAndTangent(Normals[V], PerpendicularTo(Normals[V]));
+            Builder.AddVertex(Positions[V])
+                .SetNormalAndTangent(Normals[V], PerpendicularTo(Normals[V]))
+                .SetColor(bHasColors ? Colors[V] : FColor(0, 0, 0, 0));
         for (int32 T = 0; T + 2 < Triangles.Num(); T += 3)
             Builder.AddTriangle(Triangles[T], Triangles[T + 1], Triangles[T + 2], /*PolyGroup=*/0);
     }

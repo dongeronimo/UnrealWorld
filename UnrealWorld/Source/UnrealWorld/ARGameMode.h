@@ -1,15 +1,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/GameModeBase.h"
+#include "ReconGameModeBase.h"
 #include "ARGameMode.generated.h"
 /// <summary>
-/// For now it's just an "empty" Game Mode to allow me to 
-/// set the specific Pawn that i want to use (A pawn derived
-/// from AARPawn).
+/// The game mode on the device. Its blueprint sets the AR pawn, and its
+/// Persistence is what Recon.Save writes through. WorldToLoad stays empty
+/// there: the reconstruction runs live from ARCore.
 /// </summary>
 UCLASS()
-class AARGameMode : public AGameModeBase {
+class AARGameMode : public AReconGameModeBase {
 	GENERATED_BODY()
 
 public:

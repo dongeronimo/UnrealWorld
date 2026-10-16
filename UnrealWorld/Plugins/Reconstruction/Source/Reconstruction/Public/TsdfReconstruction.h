@@ -38,6 +38,31 @@ struct FTsdfConfig
     // Metres. Depth outside this range is treated as no estimate.
     float NearPlane = 0.3f;
     float FarPlane = 3.0f;
+
+    // Voxels carry the colour the camera saw at them: 4 bytes on top of 8.
+    // Fixed at construction, chunks allocate their colour arrays (or don't)
+    // when they're created.
+    bool bColor = true;
+    // Ceiling on a voxel's colour weight. Low, so colour stays correctable:
+    // the first sweep sees a room under auto exposure that's still settling.
+    uint8 ColorMaxWeight = 32;
+    // Observations before the mesh reports a vertex colour as fully trusted
+    // (alpha 255). Not ColorMaxWeight: that one is about being correctable,
+    // this one about there being a colour to show at all.
+    uint8 ColorFullConfidenceWeight = 4;
+};
+
+// The camera image of the same frame, if there is one. Borrowed like the depth.
+// YUV 4:2:0 with interleaved chroma, what FARFrameData carries.
+struct FTsdfColorFrame
+{
+    const uint8* Y = nullptr;
+    const uint8* UV = nullptr;
+    bool bVFirst = false; // true = NV21, false = NV12
+    int32 Width = 0, Height = 0, YRowStride = 0, UVRowStride = 0;
+    // Intrinsics of this image, and the size they were expressed against.
+    float Fx = 0, Fy = 0, Cx = 0, Cy = 0;
+    int32 IntrinsicsWidth = 0, IntrinsicsHeight = 0;
 };
 
 // One raw depth image and what's needed to fuse it. The pointers are ARCore's own
@@ -52,6 +77,7 @@ struct FTsdfDepthFrame
     int32 ConfidenceRowStrideBytes = 0;
     float Fx = 0, Fy = 0, Cx = 0, Cy = 0;
     float SensorPose[7] = {}; // qx qy qz qw tx ty tz, ARCore's raw sensor pose
+    FTsdfColorFrame Color; // optional: Y null means geometry only
 };
 
 // A chunk's surface, with positions relative to the chunk origin so the floats
@@ -61,6 +87,30 @@ struct FTsdfChunkMesh
     TArray<FVector3f> Positions;
     TArray<FVector3f> Normals;
     TArray<uint32> Indices;
+    // Gamma encoded RGB as the camera saw it; A is how much colour evidence
+    // stands behind it, 0 = never seen in colour. Empty when colour is off.
+    TArray<FColor> Colors;
+};
+
+// One chunk's voxels, exactly as the TSDF holds them, in OpenChisel's voxel
+// order (X fastest, then Y, then Z). Weight is kept as well as distance because
+// it isn't derivable: it's the record of whether anything ever looked at a voxel.
+struct FTsdfChunkVoxels
+{
+    FIntVector Key = FIntVector::ZeroValue;
+    TArray<float> Sdf;
+    TArray<float> Weight;
+    // R, G, B, weight per voxel. Empty when the chunk has no colour.
+    TArray<uint8> Rgbw;
+};
+
+// Everything needed to rebuild a reconstruction elsewhere and mesh it into the
+// same triangles: the config it ran with and every chunk's voxels. Plain data,
+// no IO: writing it somewhere is someone else's job.
+struct FTsdfSnapshot
+{
+    FTsdfConfig Config;
+    TArray<FTsdfChunkVoxels> Chunks;
 };
 
 struct FTsdfStats
@@ -89,6 +139,14 @@ public:
 
     bool GetChunkMesh(const FIntVector& Key, FTsdfChunkMesh& Out) const;
     FVector3f GetChunkOrigin(const FIntVector& Key) const;
+
+    // Copies the whole field out, config included.
+    void Export(FTsdfSnapshot& Out) const;
+    // Replaces the whole field with the snapshot's and queues every chunk for
+    // remesh. Refuses a snapshot whose ChunkVoxels or VoxelMetres differ from
+    // this instance's, since every voxel index only means a position under
+    // those two: construct from Snapshot.Config first.
+    bool Import(const FTsdfSnapshot& Snapshot, FString& OutError);
 
     int32 GetPendingRemeshCount() const;
     const FTsdfStats& GetLastStats() const;

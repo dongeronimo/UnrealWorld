@@ -23,9 +23,10 @@ class AReconChunkActor : public AActor {
 public:
     AReconChunkActor();
 
-    // Unreal space, centimetres, relative to this actor.
+    // Unreal space, centimetres, relative to this actor. Colors is one per
+    // vertex or empty; empty draws black with alpha 0 (no colour evidence).
     void SetGeometry(const TArray<FVector3f>& Positions, const TArray<FVector3f>& Normals,
-        const TArray<uint32>& Triangles, UMaterialInterface* Material);
+        const TArray<FColor>& Colors, const TArray<uint32>& Triangles, UMaterialInterface* Material);
     void ClearGeometry();
 
 private:
