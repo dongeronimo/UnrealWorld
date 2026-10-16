@@ -14,7 +14,8 @@ I have not run these steps in an editor.
 
 ## 0. What you have
 
-`D:\unrealworld\art\ratoman_brute_unreal\`
+`D:\unrealworld\art\ratoman_brute_unreal_cm\`, in centimetres. The files with the same names in
+`ratoman_brute_unreal\` are the old metre export; don't use them.
 
 | File | What it is | Import as |
 |---|---|---|
@@ -23,12 +24,17 @@ I have not run these steps in an editor.
 | `Ratoman_Brute_Expressoes_poses.fbx` | 5 frames: neutral, angry, evil_laugh, pain, scream | **Animation**, then turned into a Pose Asset |
 | `Ratoman_Brute_Expressoes_teste.fbx` | 265 frames that run through all four expressions | **Animation** |
 | `Ratoman_Brute_tripo_rgb_….png` | the texture, also embedded in the FBX | a spare copy, if the embedded one fails |
-| `Ratoman_Brute_unreal.blend` | the Blender source of all the above | — |
+| `..\ratoman_brute_unreal\Ratoman_Brute_unreal_cm.blend` | the Blender source of all the above | — |
 
 What was already fixed in Blender, so you don't hunt for these problems:
 
-- **Scale is baked in.** The armature has scale 1 and everything is in metres. The FBX says "metres",
-  and every node has scale 1. No "root bone at scale 100" problem.
+- **Everything is in centimetres.** The FBX says "centimetres" (`UnitScaleFactor` 1), every node has
+  scale 1, and `CC_Base_Hip` sits at 111. Unreal has nothing to convert, so there is no "root bone at
+  scale 100" problem.
+  The first export was in metres. Unreal converted it on import and put the ×100 on `RL_BoneRoot`. No
+  Blender FBX export option avoids that, so `D:\UnrealWorld\blender_utils\to_centimeters.py` scaled
+  the .blend itself ×100 (bones, mesh, shape keys and every action's location keys) and set the scene's
+  Unit Scale to 0.01.
 - **The reference pose is his A-pose.** The mesh is bound in the A-pose, which becomes his
   reference/retarget pose in Unreal. The T-pose action from AccuRig was left out on purpose.
 - **No leaf bones.** There are no `_end` bones.
@@ -92,15 +98,16 @@ later.
 Open the Skeletal Mesh and go through this list. If something here is wrong, everything after it will be
 wrong too.
 
-- [ ] **Height:** about **200 cm**. Use the viewport's measure tool, or check the bounds in the asset
+- [x] **Height:** about **200 cm**. Use the viewport's measure tool, or check the bounds in the asset
       details.
-- [ ] **Skeleton tree:** the top bone is `RL_BoneRoot`, with no `Armature` bone above it. Total **115
+- [x] **Skeleton tree:** the top bone is `RL_BoneRoot`, with no `Armature` bone above it. Total **115
       bones**.
-- [ ] **Bone scale:** select `RL_BoneRoot` and `CC_Base_Hip`; their scale is 1, 1, 1.
-- [ ] **Morph targets** (the Morph Target Viewer is new in 5.7): it lists `snarl_L/R`, `lipCornerBack_L/R`, `lipLowerDown_L/R`,
+- [x] **Bone scale:** select `RL_BoneRoot` and `CC_Base_Hip`; their scale is 1, 1, 1.
+- [x] **Morph targets** (Skeletal Mesh editor → **Window → Morph Target Previewer**; it usually opens
+      as a tab next to Asset Details): it lists `snarl_L/R`, `lipCornerBack_L/R`, `lipLowerDown_L/R`,
       `browDown_L/R`, `noseWrinkle`, `nostrilFlare`, `browInnerUp` (and `V_None`). Drag `snarl_L` to
       1: the upper lip lifts off the left fang.
-- [ ] **Texture:** present on the mesh.
+- [x] **Texture:** present on the mesh.
 
 Then import the three animation FBX files onto `Ratoman_Brute_Skeleton`. In Interchange, point the
 animation import at the existing skeleton and **turn mesh import off**. The two `Expressoes_*` files
@@ -482,5 +489,10 @@ Post Process ABP:   Input Pose
 Every step was a script, recorded in `D:\gurps\tools\blender\README.md`, section "Malha-sopa do Tripo".
 The expression values (control positions, intensities, the four presets) live in
 `D:\gurps\tools\blender\pele\ratoman_brute.json`. To make the scream bigger or the ears flatter, edit that
-file and re-run `expressoes_focinho.py`, then `exportar_unreal.py`. **Reimport the FBX files over the
-existing assets** to keep the references.
+file and re-run `expressoes_focinho.py` on the metre .blend (`Ratoman_Brute_unreal.blend`; those scripts
+were written for metres). Then convert and export:
+```
+blender -b Ratoman_Brute_unreal.blend -P D:\UnrealWorld\blender_utils\to_centimeters.py -- Ratoman_Brute_unreal_cm.blend
+blender -b Ratoman_Brute_unreal_cm.blend -P D:\gurps\tools\blender\exportar_unreal.py -- D:\unrealworld\art\ratoman_brute_unreal_cm Ratoman_Brute
+```
+**Reimport the FBX files over the existing assets** to keep the references.

@@ -40,7 +40,7 @@ All paths are in `D:\UnrealWorld\Art\` unless noted.
 
 | mesh | material | notes |
 |---|---|---|
-| `Body_Rigged` | `Sophia_Body_Fishnet` (texture `Sophia_Body_Fishnet_pernas.png`; swap in `Sophia_vag.png` for bare legs) | 52 shape keys: 26 `CORR_*`, 22 ARKit-named expressions, `V_None`, plus the Basis |
+| `Body_Rigged` | `Sophia_Body_Fishnet` (texture `Sophia_Body_Fishnet_rede_unhas.png`; swap in `Sophia_vag_unhas.png` for bare legs. Both have burgundy nails on hands and feet, painted by `Art/tools/unhas_uv.py` + `unhas_compor.py`. The fishnet is generated on the skin by `Art/tools/fishnet_rede.py` + `fishnet_rede_campos.py`, which replaced the old projected net that smeared on the feet) | 52 shape keys: 26 `CORR_*`, 22 ARKit-named expressions, `V_None`, plus the Basis |
 | `Shirt` | `Sophia_Shirt` | own UV and textures, plus the mask UV on channel 1 |
 | `Skirt` | `Sophia_Skirt` | 26 `CORR_*` keys, the same names as the body's; optional cloth (`Cloth_Mask`) |
 | `Jacket` | `Sophia_Jacket` | cloth mask: colour attribute `Cloth_Mask` and group `Cloth_MaxDistance` |
@@ -272,8 +272,12 @@ Use the Pose Asset, as in Ratoman §8. The 22 keys use ARKit names (`eyeBlink_L`
   the thick capsules.
 - **The inner-thigh skin marks in deep squats** are deformation, not the masks. The `CORR_*` keys
   reduce them; they are visible with all masks off too.
-- **The katana has no hand socket yet.** It waits for sheathe/unsheathe clips (animation plan);
-  the scabbard socket is in `sophia_soquetes.json`.
+- **Katana (2026-10-16):** export file is `sophia_katana_costas2.blend`. The scabbard is on her back
+  (`CC_Extra_Scabbard` is a child of `Spine02`), because the Grruzam clips draw over the right shoulder.
+  The katana in hand rides the weapon bone `CC_Extra_Katana` (child of `R_Hand`, no weights), which
+  each Grruzam clip keys; socket `katana_mao` in `sophia_soquetes.json`. In `katana_intro` swap from
+  the scabbard socket to the `CC_Extra_Katana` socket with a notify at frame 5. Clips come from
+  `tools/blender/retarget_biped.py`, not Unreal retargeting.
 - **The retargeted clips key the face bones** (`CC_Base_FacialBone`, `JawRoot`, `UpperJaw`,
   the eyes). Expressions belong to the blendshapes and the expression controller, so strip those
   tracks on import, or run the controller after the clips in the AnimBP. The idles and their
