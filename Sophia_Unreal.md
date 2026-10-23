@@ -272,11 +272,13 @@ Use the Pose Asset, as in Ratoman §8. The 22 keys use ARKit names (`eyeBlink_L`
   the thick capsules.
 - **The inner-thigh skin marks in deep squats** are deformation, not the masks. The `CORR_*` keys
   reduce them; they are visible with all masks off too.
-- **Katana (2026-10-16):** export file is `sophia_katana_costas2.blend`. The scabbard is on her back
+- **Katana (2026-10-16):** export file is `sophia_katana_clips.blend` (clips `katana_intro`, `katana_embainhar`). The scabbard is on her back
   (`CC_Extra_Scabbard` is a child of `Spine02`), because the Grruzam clips draw over the right shoulder.
   The katana in hand rides the weapon bone `CC_Extra_Katana` (child of `R_Hand`, no weights), which
-  each Grruzam clip keys; socket `katana_mao` in `sophia_soquetes.json`. In `katana_intro` swap from
-  the scabbard socket to the `CC_Extra_Katana` socket with a notify at frame 5. Clips come from
+  each Grruzam clip keys; socket `katana_mao` in `sophia_soquetes.json`. Notifies: `katana_intro` swaps from
+  the scabbard socket to `CC_Extra_Katana` at frame 5; `katana_embainhar` (Grruzam's `Idle_B_to_A`,
+  which actually sheathes) swaps back to the scabbard socket at frame 30. The Blender curve
+  `katana_na_mao` in each action marks the in-hand frames. Clips come from
   `tools/blender/retarget_biped.py`, not Unreal retargeting.
 - **The retargeted clips key the face bones** (`CC_Base_FacialBone`, `JawRoot`, `UpperJaw`,
   the eyes). Expressions belong to the blendshapes and the expression controller, so strip those

@@ -35,8 +35,17 @@ FString UReconstructionPersistence::GetDirectory() const {
     return FPaths::Combine(FPaths::ProjectSavedDir(), Folder);
 }
 
+FString UReconstructionPersistence::GetPromotedDirectory() const {
+    return FPaths::Combine(FPaths::ProjectContentDir(), PromotedFolder);
+}
+
 FString UReconstructionPersistence::PathFor(const FString& Name) const {
     return FPaths::Combine(GetDirectory(), Name + Extension);
+}
+
+FString UReconstructionPersistence::FindPathFor(const FString& Name) const {
+    const FString Promoted = FPaths::Combine(GetPromotedDirectory(), Name + Extension);
+    return IFileManager::Get().FileExists(*Promoted) ? Promoted : PathFor(Name);
 }
 
 bool UReconstructionPersistence::Save(const FTsdfSnapshot& Snapshot, const FString& Name, FString& OutPath) const {
@@ -101,12 +110,12 @@ bool UReconstructionPersistence::Load(const FString& Name, FTsdfSnapshot& Out) c
         UE_LOG(LogReconPersistence, Error, TEXT("PERSISTENCE '%s' is not a usable world name"), *Name);
         return false;
     }
-    const FString Path = PathFor(Name);
+    const FString Path = FindPathFor(Name);
     TUniquePtr<FArchive> Ar(IFileManager::Get().CreateFileReader(*Path));
     if (!Ar) {
-        // Saved/ is gitignored: a fresh clone has no worlds until one is pulled.
-        UE_LOG(LogReconPersistence, Error, TEXT("PERSISTENCE no world at %s. Capture one with: python Tools/recon.py save %s"),
-            *FPaths::ConvertRelativePathToFull(Path), *Name);
+        // Saved/ is gitignored: a fresh clone has only the promoted worlds.
+        UE_LOG(LogReconPersistence, Error, TEXT("PERSISTENCE no world '%s' in %s or %s. Capture one with: python Tools/recon.py save %s"),
+            *Name, *FPaths::ConvertRelativePathToFull(GetPromotedDirectory()), *FPaths::ConvertRelativePathToFull(GetDirectory()), *Name);
         return false;
     }
     uint32 FileMagic = 0, FileVersion = 0;
@@ -164,13 +173,15 @@ bool UReconstructionPersistence::LoadSelected(FTsdfSnapshot& Out) const {
 }
 
 TArray<FString> UReconstructionPersistence::GetWorldNames() const {
-    TArray<FString> Files;
-    IFileManager::Get().FindFiles(Files, *FPaths::Combine(GetDirectory(), FString(TEXT("*")) + Extension), true, false);
     TArray<FString> Names;
-    Names.Reserve(Files.Num() + 1);
     Names.Add(FString());
-    for (const FString& File : Files)
-        Names.Add(FPaths::GetBaseFilename(File));
+    for (const FString& Directory : { GetPromotedDirectory(), GetDirectory() }) {
+        TArray<FString> Files;
+        IFileManager::Get().FindFiles(Files, *FPaths::Combine(Directory, FString(TEXT("*")) + Extension), true, false);
+        // A name in both is one world: Load takes the promoted copy.
+        for (const FString& File : Files)
+            Names.AddUnique(FPaths::GetBaseFilename(File));
+    }
     Names.Sort();
     return Names;
 }

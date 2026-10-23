@@ -15,8 +15,14 @@ struct FTsdfSnapshot;
 // game mode blueprint configures its own: the AR one loads nothing and saves on
 // Recon.Save, the fixture one has WorldToLoad picked from a dropdown.
 //
-// Files are Saved/<Folder>/<name>.tsdf on every platform. On a device that's
+// Saves go to Saved/<Folder>/<name>.tsdf on every platform. On a device that's
 // the only writable place; on the desktop it's where Tools/recon.py pulls to.
+//
+// Loads look in Content/<PromotedFolder> first, then Saved/<Folder>. Saved/ is
+// gitignored, so a world worth keeping gets copied into Content/ReconWorlds and
+// committed: the fixture then loads the same bytes on every clone. A world just
+// pulled loads from Saved/ without being moved. Unreal ignores the .tsdf files
+// in Content/, they aren't assets.
 //
 // ## Format, version 1
 //
@@ -41,6 +47,10 @@ public:
     UPROPERTY(EditAnywhere, Category = "Persistence")
     FString Folder = TEXT("Recon");
 
+    // Under the project's Content directory. Searched before Folder on load.
+    UPROPERTY(EditAnywhere, Category = "Persistence")
+    FString PromotedFolder = TEXT("ReconWorlds");
+
     // The world LoadSelected hands out. Empty means none: the reconstruction
     // runs live from ARCore. ?ReconWorld=<name> on the URL overrides it.
     UPROPERTY(EditAnywhere, Category = "Persistence", meta = (GetOptions = "GetWorldNames"))
@@ -53,13 +63,18 @@ public:
     // Load(WorldToLoad). False, quietly, when WorldToLoad is empty.
     bool LoadSelected(FTsdfSnapshot& Out) const;
 
-    // Names (no extension) of the worlds in the folder, sorted. The first entry
+    // Names (no extension) of the worlds in both folders, sorted. The first entry
     // is empty, so "load nothing" can be picked in the editor too.
     UFUNCTION()
     TArray<FString> GetWorldNames() const;
 
+    // Where saves go.
     FString GetDirectory() const;
+    FString GetPromotedDirectory() const;
 
 private:
+    // Where Name is saved.
     FString PathFor(const FString& Name) const;
+    // Where Name loads from: the promoted copy if there is one.
+    FString FindPathFor(const FString& Name) const;
 };

@@ -7,12 +7,12 @@
 // GameMode Override of a fixture level that has a BP_ReconstructionActor in it,
 // pick the room in Persistence -> WorldToLoad, and Play.
 //
-// The pawn flies (WASD, mouse to look, E/Q up and down) and goes through
-// walls: the chunks have no collision yet, and the point is looking at the room
-// from anywhere.
+// The pawn is AFixturePawn: it flies (WASD, mouse to look, E/Q up and down) and
+// collides with nothing, because the point is looking at the room from anywhere,
+// outside included.
 //
 // Not abstract, so it also runs straight from the command line:
-//     UnrealEditor.exe UnrealWorld.uproject /Game/Levels/Fixture?game=/Script/UnrealWorld.FixtureGameMode?ReconWorld=kitchen -game
+//     UnrealEditor.exe UnrealWorld.uproject /Game/Levels/Fixture?game=/Script/UnrealWorld.FixtureGameMode?ReconWorld=room1 -game
 UCLASS()
 class AFixtureGameMode : public AReconGameModeBase {
     GENERATED_BODY()

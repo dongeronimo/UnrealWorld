@@ -74,6 +74,6 @@ static FAutoConsoleCommandWithWorldAndArgs GReconList(
             return;
         TArray<FString> Names = Persistence->GetWorldNames();
         Names.Remove(FString());
-        UE_LOG(LogReconCommands, Log, TEXT("RECON %d saved in %s%s%s"), Names.Num(), *Persistence->GetDirectory(),
-            Names.Num() > 0 ? TEXT(": ") : TEXT(""), *FString::Join(Names, TEXT(", ")));
+        UE_LOG(LogReconCommands, Log, TEXT("RECON %d saved in %s and %s%s%s"), Names.Num(), *Persistence->GetPromotedDirectory(),
+            *Persistence->GetDirectory(), Names.Num() > 0 ? TEXT(": ") : TEXT(""), *FString::Join(Names, TEXT(", ")));
     }));

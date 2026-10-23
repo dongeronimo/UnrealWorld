@@ -1,6 +1,9 @@
 #include "FixtureGameMode.h"
-#include "GameFramework/DefaultPawn.h"
+#include "FixturePawn.h"
+#include "GameFramework/PlayerController.h"
 
 AFixtureGameMode::AFixtureGameMode() {
-    DefaultPawnClass = ADefaultPawn::StaticClass();
+    DefaultPawnClass = AFixturePawn::StaticClass();
+    // A plain controller: the pawn brings its own fly bindings.
+    PlayerControllerClass = APlayerController::StaticClass();
 }
