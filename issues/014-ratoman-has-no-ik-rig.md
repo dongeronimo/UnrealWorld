@@ -1,6 +1,6 @@
 # 014 — Ratoman has no IK Rig, so no animation from another skeleton can reach him
 
-**Area:** anim · **Status:** open · **Blocks:** 018
+**Area:** anim · **Status:** done (2026-10-23) · **Blocks:** 018
 
 ## Context
 
@@ -50,3 +50,9 @@ Pole Vector Alignment.
 Ratoman_Brute_Unreal.md   §3
 UnrealWorld/Content/Chars/RatomanBrute/
 ```
+
+- Created IK_RatomanBrute.
+- Mapped the chains according to AccuRig_Skeleton.md.
+- Third person template imported to get Manny
+- RTG_Manny_to_Ratoman: most manny anims worked fine at first attempt. Pistol and rifle will need some fixing but we can use the tooling at d:\gurps that converted Grruzam katana anims to the accurig skeleton in blender.
+- Export one GAS walk and one jog to his skeleton as a check : no need. I don't know which anims i'll need and i'll export on an as-needed basis. SSD aint cheap.

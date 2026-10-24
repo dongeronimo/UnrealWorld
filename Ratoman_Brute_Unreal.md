@@ -154,6 +154,9 @@ the twist bones, and why section 5 exists.
 
 ### IK Rig for the Ratoman
 
+The hierarchy and chains shared by every AccuRig character are in
+[`AccuRig_Skeleton.md`](AccuRig_Skeleton.md). Watch out: `CC_Base_Pelvis` is not on the path to the spine.
+
 **Retarget pelvis:** `CC_Base_Hip`. (Before 5.6 this was "Retarget Root".)
 
 **Chains** (try the IK Rig's auto-creation of chains first, then fix the result against this table):
