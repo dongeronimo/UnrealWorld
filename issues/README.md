@@ -59,7 +59,6 @@ Measurement comes before navmesh. That order is the lesson from ToySoldiers (002
 | # | Title | Area | Blocks |
 |---|---|---|---|
 | [013](013-ratomans-face-is-not-in-an-animbp.md) | Ratoman's expressions play only as a test clip: no Pose Asset in an AnimBP | anim | 019 |
-| [014](014-ratoman-has-no-ik-rig.md) | Ratoman has no IK Rig | anim | 018 |
 | [015](015-ratomans-twist-bones-are-not-driven.md) | Ratoman's twist bones are not driven: candy-wrapper wrists | anim | 016, 018 |
 | [017](017-ratomans-physics-asset-is-the-default.md) | Ratoman's physics asset is the auto-generated one | anim + physics | 016, 030 |
 | [016](016-ratomans-tail-and-ears-hang-rigid.md) | Ratoman's tail, ears and whiskers hang rigid | anim | — |
@@ -116,3 +115,4 @@ authority, and a 2-player listen-server PIE run is the cheap check.
 
 | # | Title | Date |
 |---|---|---|
+| [014](014-ratoman-has-no-ik-rig.md) | Ratoman has no IK Rig | 2026-10-24 |

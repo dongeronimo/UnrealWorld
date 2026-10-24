@@ -1,6 +1,6 @@
 # 018 — Ratoman has no clips to fight with: no locomotion, attack, hit react or death
 
-**Area:** anim + content · **Status:** open · **Blocked by:** 014 · **Blocks:** 039, 019
+**Area:** anim + content · **Status:** open · **Blocked by:** 014 (done 2026-10-24) · **Blocks:** 039, 019
 
 ## Context
 
@@ -14,13 +14,13 @@ He's 2.0 m, hunched, long-armed, with claws: he reads as a **melee brute**. The 
 
 | clip | source |
 |---|---|
-| idle, walk, run, plus starts, stops and turns if available | Game Animation Sample (Manny → 014's retargeter) |
+| idle, walk, run, plus starts, stops and turns if available | Manny's clips from the Third Person template, through 014's retargeter |
 | 2–3 melee swings (claw or overhead smash) | Mixamo, retargeted (the `mixamorig:*` → `CC_Base_*` map), or Lyra |
-| hit react, front and back | Lyra / GAS, or Mixamo |
+| hit react, front and back | Lyra or Mixamo |
 | death | a clip, or the ragdoll from 017 with a short physics blend |
 | aggro roar | any clip, plus 013's Scream curve |
 
-The licences are recorded in `Sophia_Animation_Plan.md` §4. GAS and Lyra are free for Unreal
+The licences are recorded in `Sophia_Animation_Plan.md` §4. Lyra is free for Unreal
 projects. Mixamo is royalty-free in games, and the raw files can't be redistributed.
 
 ## What to do

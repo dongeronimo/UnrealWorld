@@ -1,6 +1,6 @@
 # 014 — Ratoman has no IK Rig, so no animation from another skeleton can reach him
 
-**Area:** anim · **Status:** done (2026-10-23) · **Blocks:** 018
+**Area:** anim · **Status:** done (2026-10-24) · **Blocks:** 018
 
 ## Context
 
