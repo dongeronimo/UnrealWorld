@@ -7,10 +7,12 @@
 		{
 			"Name": "UnrealWorld",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
 		}
 	],
-	"TargetPlatforms": [ "Android" ],
 	"Plugins": [
 		{
 			"Name": "ModelingToolsEditorMode",
@@ -18,7 +20,7 @@
 			"TargetAllowList": [
 				"Editor"
 			]
-		}, 
+		},
 		{
 			"Name": "GoogleARCore",
 			"Enabled": true,
@@ -26,5 +28,8 @@
 				"Android"
 			]
 		}
+	],
+	"TargetPlatforms": [
+		"Android"
 	]
 }

@@ -47,3 +47,16 @@ is the loop, not the look.
 UnrealWorld/Content/Levels/Arena.umap (new)
 UnrealWorld/Source/UnrealWorld/   AArenaGameMode, AExtractionPoint (new)
 ```
+
+## Notes
+
+*2026-10-24.* The greybox starts from the Third Person template instead of a level blocked from
+scratch:
+
+- `Content/Levels/Arena.umap` is a copy of `Lvl_ThirdPerson` (World Partition, one file per actor
+  under `__ExternalActors__/Levels/`). Its blocks come from `Content/LevelPrototyping/`, so that
+  folder stays. The template's own map and blueprints (`Content/ThirdPerson/`) were deleted.
+- `Content/Arena/BP_ArenaGameMode` overrides the game mode in Arena's World Settings. It is empty
+  for now and derives from the C++ `AThirdPersonGameMode` (an empty `AGameMode`), which stands in
+  for the `AArenaGameMode` above.
+- No navmesh yet. Add the `NavMeshBoundsVolume` when 019 needs it.
