@@ -10,4 +10,8 @@ Desktop.ini
 .claude/settings.local.json
 
 Archive/
-Art/
+# Art holds the big binaries (blends, textures). Its scripts and notes are tracked.
+Art/*
+!Art/tools/
+Art/tools/*.npz
+!Art/*.md
