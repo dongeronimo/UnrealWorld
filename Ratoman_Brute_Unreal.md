@@ -424,16 +424,16 @@ targets. The `Expressoes_poses` clip holds all four, one per frame:
 
 The flexible way, which lets you blend several at once:
 ```
-[body animation] ──────────────────────────────┐
-                                                ├─ Apply Additive (Alpha = 1) → [twist/tail post-process] → Output
-[Pose Asset node: PA_Ratoman_Faces] ────────────┘
-      ▲
-      └── driven by curves named Angry / EvilLaugh / Pain / Scream (0..1)
-          set them with a "Modify Curve" node from float variables (AngryWeight, …)
+[body animation] → Modify Curve → [Pose Asset node: PA_RatomanBrute_Faces] → Output
+                   (Angry / EvilLaugh / Pain / Scream ← float variables AngryWeight, …, 0..1)
 ```
-Dragging the Pose Asset into the AnimGraph gives a node that evaluates the poses by **curve weight**.
-Each curve with a pose's name blends that pose in, so `Angry = 0.5` is half-angry. Drive those curves
-from variables that your gameplay sets.
+Dragging the Pose Asset into the AnimGraph gives a **Pose Blender** node that evaluates the poses by
+**curve weight**. It reads the curves off its Source Pose: each curve with a pose's name blends that
+pose in, so `Angry = 0.5` is half-angry. Drive those curves from variables that your gameplay sets.
+
+**No Apply Additive after it.** With an additive Pose Asset the Pose Blender already adds the face onto
+its Source Pose and outputs the full pose. Feeding that into Apply Additive adds the body to itself,
+and he curls into a spiral (Alpha 0 looks fine, which is the tell). Checked in `ABP_RatomanBrute`.
 
 The simple way: one **Pose By Name** node per expression, chosen with **Blend Poses by Enum** from an
 `EFace` enum. You get one expression at a time, with blend time between them.
@@ -464,7 +464,8 @@ The simple way: one **Pose By Name** node per expression, chosen with **Blend Po
 
 ```
 AnimBP (gameplay):  locomotion / retargeted clip
-                    → Apply Additive (face Pose Asset)
+                    → Modify Curve (face weights)
+                    → Pose Blender (face Pose Asset, additive; no Apply Additive)
                     → Output
 Post Process ABP:   Input Pose
                     → Control Rig: CR_Ratoman_Twist      (twist bones)

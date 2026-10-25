@@ -26,7 +26,7 @@ projects. Mixamo is royalty-free in games, and the raw files can't be redistribu
 ## What to do
 
 - Retarget the set through 014. Each clip gets checked through `ABP_Ratoman_Post` (015).
-- `ABP_Ratoman`:
+- `ABP_RatomanBrute`:
   - a locomotion blend by speed;
   - a montage slot for attacks and hit reacts;
   - the face additive (013).
@@ -50,7 +50,7 @@ projects. Mixamo is royalty-free in games, and the raw files can't be redistribu
 ## Done when
 
 - In `RatomanBrute_Test`, he idles, walks, runs, swings with notifies firing in the log, flinches
-  and dies, all through `ABP_Ratoman` with the face and twist layers on.
+  and dies, all through `ABP_RatomanBrute` with the face and twist layers on.
 
 ## Files
 

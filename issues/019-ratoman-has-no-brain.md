@@ -15,8 +15,9 @@ The same character, controller and behaviour serve both. The room just has no en
 
 ## What to do
 
-- `ARatomanCharacter : ACharacter` (Abstract, C++). Its mesh, ABP and tuning are set on
-  `BP_Ratoman`, following the project's pattern of blueprint-set assets and no path lookups.
+- `ARatomanBrute : ACharacter` (C++, exists since 013 with the four face weights, which `ABP_RatomanBrute`
+  reads in Update Animation; make it Abstract). Its mesh, ABP and tuning are set on
+  `BP_RatomanBrute`, following the project's pattern of blueprint-set assets and no path lookups.
   The character carries its own AbilitySystemComponent (037, Minimal replication), and its
   Health is the attribute.
 - `ARatomanAIController` with a small **State Tree** (5.7's recommended alternative to Behaviour
@@ -47,5 +48,5 @@ The same character, controller and behaviour serve both. The room just has no en
 
 ```
 UnrealWorld/Source/UnrealWorld/   the character and the controller (new)
-UnrealWorld/Content/Chars/RatomanBrute/   BP_Ratoman, ABP_Ratoman
+UnrealWorld/Content/Chars/RatomanBrute/   BP_RatomanBrute, ABP_RatomanBrute
 ```
