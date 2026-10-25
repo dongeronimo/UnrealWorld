@@ -1,6 +1,6 @@
 # 015 — Ratoman's twist bones are not driven: candy-wrapper wrists on every retargeted clip
 
-**Area:** anim · **Status:** open · **Blocks:** 016 (it adds to the same post-process ABP), 018 looking right
+**Area:** anim · **Status:** done (2026-10-25) · **Blocks:** 016 (it adds to the same post-process ABP), 018 looking right
 
 ## Context
 
@@ -57,3 +57,27 @@ look stiff in the dance.
 Ratoman_Brute_Unreal.md   §4, §5, §9
 UnrealWorld/Content/Chars/RatomanBrute/
 ```
+
+## Outcome (2026-10-25)
+
+- `CR_RatomanBruteTwist` (plain Control Rig, Forwards Solve only), with two functions:
+  - `ApplyTwist(Bone, Angle, Factor, Axis)`: Get Transform (Bone, Local, Initial ✔) → Multiply
+    (quaternion; A = rest rotation, B = From Axis And Angle(Axis, Angle × Factor)) → Set Transform
+    (Bone, Local). In 5.7 Set Transform is a template: its `Value` pin is a wildcard, and wiring a
+    quaternion into it makes it a Set Rotation.
+  - `DistributeTwist(Driver, Twist01, Twist02, F01, F02, Axis)`: Make Relative (Global = Driver
+    local now, Parent = Driver local at rest) → To Swing & Twist → To Axis And Angle → Angle × Dot(its
+    Axis, `Axis`) → ApplyTwist twice. The twist is measured **from the rest pose** and added **on top
+    of** each twist bone's rest pose, because neither sits at zero rotation in the reference pose.
+  - Eight calls with §5's table. The twist axis is **Y** `(0,1,0)` on every limb bone, checked with the
+    local gizmo on Forearm, ForearmTwist01 and Thigh.
+- No angle normalisation needed: in 5.7, To Axis And Angle already returns −180..180°.
+- It runs in `ABP_RatomanBrute`, not a separate post-process ABP:
+  `… PA_RatomanBrute_Faces → Control Rig → Output Pose`. Every gameplay clip goes through that ABP.
+  The trade-off: clips previewed directly on the mesh (Content Browser, Sequencer animation tracks)
+  don't get the twist. Moving the node to a Post Process Anim Blueprint fixes that if it matters.
+- Checked by eye on the dance: no aberrations at rest, all eight limbs look fine. No before/after
+  screenshots were taken (the Control Rig node's Alpha 0 / 1 is the quick way to get them).
+- For Sophia (same `CC_Base_*` rig), the same rig should work: tick **Set Initial Transforms From
+  Mesh** on the Control Rig node so the rest pose comes from her mesh, and check her twist axis first.
+

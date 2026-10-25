@@ -1,6 +1,6 @@
 # 033 — The app has no front door: it opens straight into one level
 
-**Area:** gameplay + ui · **Status:** open · **Blocks:** 002's "two sessions in one app"
+**Area:** gameplay + ui · **Status:** open · **Blocked by:** 042 · **Blocks:** 002's "two sessions in one app"
 
 ## Context
 

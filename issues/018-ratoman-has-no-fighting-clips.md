@@ -25,7 +25,7 @@ projects. Mixamo is royalty-free in games, and the raw files can't be redistribu
 
 ## What to do
 
-- Retarget the set through 014. Each clip gets checked through `ABP_Ratoman_Post` (015).
+- Retarget the set through 014. Each clip gets checked through `ABP_RatomanBrute`, which has the twist (015).
 - `ABP_RatomanBrute`:
   - a locomotion blend by speed;
   - a montage slot for attacks and hit reacts;

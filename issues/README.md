@@ -42,6 +42,7 @@ Measurement comes before navmesh. That order is the lesson from ToySoldiers (002
 
 | # | Title | Area | Blocks |
 |---|---|---|---|
+| [042](042-ar-runs-in-every-level.md) | AR runs in every level: the AR pawn spams camera info and ARCore starts outside the room | ar + gameplay | 033 |
 | [003](003-chunks-ignore-the-fused-colour.md) | The chunks ignore the fused colour, on the fixture and on the phone | render | judging by eye |
 | [004](004-the-room-follows-the-pawn.md) | The room follows the pawn instead of an ARCore anchor | ar + recon | 005, 010, 012 |
 | [006](006-raw-frames-cannot-be-replayed.md) | Only the fused field is saved, so no function can be compared on the same data | recon + tools | 007, 008, 009, 011 |
@@ -58,7 +59,6 @@ Measurement comes before navmesh. That order is the lesson from ToySoldiers (002
 
 | # | Title | Area | Blocks |
 |---|---|---|---|
-| [015](015-ratomans-twist-bones-are-not-driven.md) | Ratoman's twist bones are not driven: candy-wrapper wrists | anim | 016, 018 |
 | [017](017-ratomans-physics-asset-is-the-default.md) | Ratoman's physics asset is the auto-generated one | anim + physics | 016, 030 |
 | [016](016-ratomans-tail-and-ears-hang-rigid.md) | Ratoman's tail, ears and whiskers hang rigid | anim | — |
 | [018](018-ratoman-has-no-fighting-clips.md) | Ratoman has no clips to fight with | anim + content | 019 |
@@ -114,5 +114,6 @@ authority, and a 2-player listen-server PIE run is the cheap check.
 
 | # | Title | Date |
 |---|---|---|
+| [015](015-ratomans-twist-bones-are-not-driven.md) | Ratoman's twist bones are not driven: candy-wrapper wrists | 2026-10-25 |
 | [014](014-ratoman-has-no-ik-rig.md) | Ratoman has no IK Rig | 2026-10-24 |
 | [013](013-ratomans-face-is-not-in-an-animbp.md) | Ratoman's expressions play only as a test clip: no Pose Asset in an AnimBP | 2026-10-24 |

@@ -147,6 +147,7 @@ As in Ratoman §1, with these additions:
 - **Body.**
   - Opaque, *Used with Skeletal Mesh* checked.
   - The mask Custom node on WPO (step 4).
+  - Wounds that show as HP drops (one scalar, `HP`): `Art/sophia_feridas_UNREAL.md`.
 - **Shirt.** The same mask node, with its own texture.
 - **Panty.** Masked, with the texture's alpha → Opacity Mask.
 - **Glass lens.** Translucent.

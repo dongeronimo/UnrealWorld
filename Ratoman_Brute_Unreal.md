@@ -299,7 +299,7 @@ Start with these and adjust by eye. The forearm is the one that matters most for
 
 1. **Create the asset.** Right-click `Ratoman_Brute` (the Skeletal Mesh) → **Create → Control
    Rig**. If your version doesn't offer that, use Content Browser → Animation → Control Rig and pick the
-   plain **Control Rig**, not Modular. Name it `CR_Ratoman_Twist`.
+   plain **Control Rig**, not Modular. Name it `CR_RatomanBruteTwist`.
    If the Rig Hierarchy panel is empty, right-click in it and choose **Import** from the Skeletal Mesh.
 2. **Find the twist axis.** In the Rig Hierarchy or the Skeleton editor, turn on the bones' local axes
    and look at `CC_Base_L_Forearm`. Note which local axis runs **along the bone**, from elbow to wrist.
@@ -311,16 +311,30 @@ Start with these and adjust by eye. The forearm is the one that matters most for
    - `F01`, `F02` (Float)
    - `Axis` (Vector, `(0,1,0)` if your axis is Y)
 
-   Body:
+   Neither the driver nor the twist bones sit at zero rotation in the reference pose, so measure the
+   twist **from the rest pose** and add it **on top of** each twist bone's rest pose. Split it in two
+   functions (node names checked in the 5.7 source):
    ```
-   Get Transform (Item = Driver, Space = Local, Initial = false)
-     → Rotation → To Swing & Twist (Twist Axis = Axis) → Twist (quaternion)
-     → To Axis And Angle → Axis, Angle
-   From Axis And Angle (Axis, Angle × F01) → Set Rotation (Item = Twist01, Space = Local)
-   From Axis And Angle (Axis, Angle × F02) → Set Rotation (Item = Twist02, Space = Local)
+   ApplyTwist(Bone, Angle, Factor, Axis):
+     Get Transform (Item = Bone, Local, Initial ✔) → Rotation ─ A ┐
+     From Axis And Angle (Axis, Angle × Factor) ──────────── B ┴ Multiply (quaternion)
+       → Set Transform (Item = Bone, Space = Local, Value = that quaternion)
+
+   DistributeTwist(Driver, Twist01, Twist02, F01, F02, Axis):
+     Make Relative (quaternion)
+       Global = Get Transform (Driver, Local, Initial ☐).Rotation     ← now
+       Parent = Get Transform (Driver, Local, Initial ✔).Rotation     ← at rest
+     → Local → To Swing & Twist (Twist Axis = Axis) → Twist
+     → To Axis And Angle → Angle × Dot(its Axis output, Axis)         ← signed angle
+     → ApplyTwist(Twist01, angle, F01, Axis) → ApplyTwist(Twist02, angle, F02, Axis)
    ```
-   Set Rotation in **Local** space *replaces* the twist bone's local rotation, measured from the parent's
-   current pose. That's what the tables above assume.
+   - In 5.7 **Set Transform** is a template. Its `Value` pin is a grey wildcard until you wire
+     something in; a quaternion turns it into Set Rotation. There is no Make Transform to use
+     (deprecated in 5.7), and you don't need one.
+   - The **Dot** puts every angle on the +Axis convention: To Axis And Angle may answer "+30° about
+     +Y" or "−30° about −Y" for the same roll.
+   - To find a node, drag from the pin that feeds it and search. The menu then offers only the
+     version for that pin's type (Multiply exists for float, vector, quaternion, transform...).
 4. **Forwards Solve:** chain eight calls.
    ```
    DistributeTwist(L_Upperarm, L_UpperarmTwist01, L_UpperarmTwist02, -0.8, 0.6)
@@ -335,15 +349,16 @@ Start with these and adjust by eye. The forearm is the one that matters most for
 5. **Test inside the Control Rig editor.** The preview can play an animation: pick the dance in the
    preview settings. Then rotate the hand around the forearm in the viewport, or scrub to a frame where
    he turns a palm. The forearm should roll gradually instead of pinching at the wrist.
-6. **Plug it in.** Create an Animation Blueprint `ABP_Ratoman_Post` for his skeleton. Its AnimGraph is
-   `Input Pose → Control Rig (CR_Ratoman_Twist) → Output Pose`. In the Skeletal Mesh asset, set
-   **Post Process Anim Blueprint = ABP_Ratoman_Post**. From then on, every animation on him (the dance,
-   anything retargeted, Sequencer) gets the twist.
+6. **Plug it in.** Built this way: the **Control Rig** node (Control Rig Class = `CR_RatomanBruteTwist`)
+   is the last node of `ABP_RatomanBrute`, `… PA_RatomanBrute_Faces → Control Rig → Output Pose`. Every
+   gameplay clip goes through that ABP. The alternative is a separate `ABP_RatomanBrute_Post`
+   (`Input Pose → Control Rig → Output Pose`) set as the mesh's **Post Process Anim Blueprint**, which
+   also covers clips played directly on the mesh (Content Browser preview, Sequencer animation tracks).
+   The node's **Alpha** (0 = off, 1 = on) is the quickest before/after check.
 
-> **Pitfall:** the angle from *To Axis And Angle* can come out in the range 0..360° with a flipped
-> axis. If a twist bone suddenly snaps 180° at some pose, normalise the angle to −180..180 before
-> multiplying, or take the twist quaternion's shortest form (some versions have an *Unit / Shortest*
-> option on the node).
+> **Pitfall (handled in 5.7):** a raw axis-angle can come out in the range 0..360°, which makes a twist
+> bone snap 180°. In 5.7, *To Axis And Angle* already returns −180..180°, and the Dot above fixes the
+> sign. Avoid the quaternion **Scale** node for this: it uses the raw angle.
 
 > **Why not Control Rig's built-in "Twist Bones" node?** It spreads the twist of the *end* of a chain
 > along the bones of that chain. The CC twist bones aren't arranged that way: the forearm twist bones are
@@ -463,12 +478,10 @@ The simple way: one **Pose By Name** node per expression, chosen with **Blend Po
 ## 9. The order that works
 
 ```
-AnimBP (gameplay):  locomotion / retargeted clip
+ABP_RatomanBrute:   locomotion / retargeted clip
                     → Modify Curve (face weights)
                     → Pose Blender (face Pose Asset, additive; no Apply Additive)
-                    → Output
-Post Process ABP:   Input Pose
-                    → Control Rig: CR_Ratoman_Twist      (twist bones)
+                    → Control Rig: CR_RatomanBruteTwist (twist bones)
                     → AnimDynamics / Kawaii: tail, ears  (physics last, so it reacts to everything above)
                     → Output
 ```

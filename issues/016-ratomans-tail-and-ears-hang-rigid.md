@@ -1,6 +1,6 @@
 # 016 — Ratoman's tail, ears and whiskers hang rigid
 
-**Area:** anim · **Status:** open · **Blocked by:** 015 (same post-process ABP), 017 (the capsules the tail collides with)
+**Area:** anim · **Status:** open · **Blocked by:** 015 (done: the twist Control Rig is the last node of `ABP_RatomanBrute`), 017 (the capsules the tail collides with)
 
 ## Context
 
@@ -18,7 +18,7 @@ sees. §6 of `Ratoman_Brute_Unreal.md` lists the options:
 
 ## What to do
 
-- Kawaii Physics on the tail, in `ABP_Ratoman_Post` after the twist Control Rig, colliding with
+- Kawaii Physics on the tail, in `ABP_RatomanBrute` after the twist Control Rig, colliding with
   thigh and calf capsules.
 - AnimDynamics (or Kawaii) on each ear: a single bone, small limits, a stiff spring. It runs after
   the expression layer (013), because the expressions rotate the ears.
