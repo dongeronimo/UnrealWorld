@@ -1,6 +1,6 @@
 # 017 — Ratoman's physics asset is the auto-generated one
 
-**Area:** anim + physics · **Status:** open · **Blocks:** 016 (its capsules), 030 (hit detection on his body), ragdoll on death
+**Area:** anim + physics · **Status:** open, parked 2026-10-26 until 016 or 030 needs the bodies (half-edited in the editor; see "Found while doing it") · **Blocks:** 016 (its capsules), 030 (hit detection on his body), ragdoll on death
 
 ## Context
 
@@ -21,6 +21,26 @@ him to be **hit** (030: sword traces and pistol line traces against his bodies) 
 - Constraint limits that keep a ragdoll from folding the knees backwards.
 - Assign it to the mesh, and set the collision profile so traces on the `Pawn` / weapon channel hit
   the bodies.
+
+## Found while doing it
+
+*2026-10-25.* The generator skips thigh, calf, upper arm and forearm. On this CC rig the limb skin is
+weighted to the twist bones, and `CC_Base_L/R_Thigh` has none at all. Bodies are fit from the
+vertices skinned to the bone (`PhysicsAssetUtils.cpp:697+`), so **Create Bodies / Constraints**
+fails there even with Vertex Weighting Type = Any Weight (Window → Tools). Deleting the twist
+bodies then leaves the limbs bare.
+
+The way through, per limb bone:
+
+1. Note the Radius and Length of the twist capsules on it (Details → Primitives → Capsules).
+2. Select the bone in the Skeleton Tree and press **Ctrl+2** (Add Capsule). It creates a body with a
+   default capsule and doesn't need vertices (`PhysicsAssetEditor.cpp:2339`).
+3. Set Radius, Length (joint to joint minus the two radii), Center and Rotation by hand.
+4. Check the parent constraint exists (otherwise select both bodies → **Constrain Selected Bodies**),
+   then delete the twist bodies.
+5. Mirror the values to the other side.
+
+Sophia (023) is CC too, so expect the same there.
 
 ## The tempting wrong fixes
 

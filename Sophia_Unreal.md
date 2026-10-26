@@ -20,7 +20,9 @@ All paths are in `D:\UnrealWorld\Art\` unless noted.
 
 | what | where |
 |---|---|
-| **The file to export** | **`sophia_idle.blend`** (2026-10-16: `sophia_camisa_masks.blend` + weapons holstered + idle clips). Every other `sophia_*.blend` is an intermediate step |
+| **The file to export** | **`sophia_katana_clips.blend`** (corrected 2026-10-25; this row used to say `sophia_idle.blend`). It is `sophia_idle.blend` plus the katana bone, the scabbard on her back and the two katana clips. It still has the idles, the masks and the 52 shape keys, and the Grruzam batch builds every folder from it (`D:\gurps\tools\blender\grruzam-batch-plan.md`). `sophia_ruiva_preview.blend` is the same file with the redhead body texture, for looking only. Every other `sophia_*.blend` is an intermediate step |
+| **The exported FBXs** | `grruzam_lote\unreal\`: the character `Movements_Intro\Sophia.fbx` (no props, cm), the props `Props\*.fbx` with `Props\soquetes_unreal.json`, the 465 clips one folder each, and `katana_notifies.json` |
+| Wounds | `feridas\` and `sophia_feridas_UNREAL.md`: three textures and the Body material nodes, driven by one `HP` scalar |
 | Body mask textures | `sophia_masks\masks_rgba.png`: R arms (jacket), G chest (shirt), B hips (skirt), A legs (boots). 128×128 |
 | Shirt mask texture | `sophia_shirt_masks\masks_rgba.png`: R = the jacket hides the shirt. 64×64 |
 | Notes on cloth, masks, materials and props | `sophia_jaqueta_chaos_cloth.md`. It records every decision, with the measurements behind it |
@@ -30,9 +32,10 @@ All paths are in `D:\UnrealWorld\Art\` unless noted.
 
 ### What is in the file
 
-- **Armature** `Armature`: 117 bones.
+- **Armature** `Armature`: 118 bones in the FBX, root `RL_BoneRoot`.
   - The `CC_Base_*` body bones.
-  - `CC_Extra_Holster` and `CC_Extra_Scabbard`, children of the Pelvis.
+  - `CC_Extra_Holster` (child of the Pelvis) and `CC_Extra_Scabbard` (child of `Spine02`, on her back; §11).
+  - `CC_Extra_Katana`, the weapon bone under `R_Hand`, with no weights. The Grruzam clips animate it.
   - Three hair chains, children of the Head: `CC_Extra_HairBack` (root + 5), `HairL` (root + 3),
     `HairR` (root + 3).
 - **The object scale is 0.01.** AccuRig works in centimetres. See step 1.
@@ -79,9 +82,20 @@ All paths are in `D:\UnrealWorld\Art\` unless noted.
 ## 1. Export from Blender
 
 ```
-blender -b sophia_idle.blend -P D:\gurps\tools\blender\aplicar_escala.py -- sophia_export.blend
-blender -b sophia_export.blend -P D:\gurps\tools\blender\exportar_unreal.py -- D:\UnrealWorld\Art\sophia_unreal Sophia
+python D:\gurps\tools\blender\lote_grruzam.py personagem
+python D:\gurps\tools\blender\lote_grruzam.py notificacoes
 ```
+
+*Run 2026-10-25.* `personagem` runs `aplicar_escala.py ... cm` on `sophia_katana_clips.blend`, then
+`exportar_unreal.py ... sem_props` (the character, without props) and `exportar_props.py` (the
+props). The proof passed: 0.0008 mm worst, height 1.510 m, 118 bones, UnitScaleFactor 1. Outputs:
+- `grruzam_lote\unreal\Movements_Intro\Sophia.fbx`;
+- `grruzam_lote\unreal\Props\{Katana,Pistol,Glass_Rayban,Kitty_Headphone}.fbx` plus
+  `soquetes_unreal.json`;
+- `grruzam_lote\unreal\katana_notifies.json`, from `notificacoes`.
+
+The blend files keep the props parented, so check the animations there as before. The paragraphs
+below describe the first plan; where they differ from the above, the above is what ran.
 
 - **`aplicar_escala.py` first.** It removes the armature's 0.01 scale and scales every action's
   location curves along with it (Ctrl+A does not do that). It refuses to save if any vertex moves
@@ -114,6 +128,14 @@ blender -b sophia_export.blend -P D:\gurps\tools\blender\exportar_unreal.py -- D
     hand, or set it by eye in the socket preview.
   - Unreal's bone axes can differ from Blender's after the FBX conversion. Treat the JSON as the
     starting value, and check it with the weapon as the socket's preview mesh.
+  - **Done 2026-10-25:** `Props\soquetes_unreal.json` has every socket already converted to Unreal:
+    bone, Relative Location in cm, and Relative Rotation as roll/pitch/yaw (the X/Y/Z fields).
+    `exportar_props.py` measures them from the file, and the scabbard and holster sockets match
+    `sophia_soquetes.json` to 0.0005 cm. The conversion assumes the FBX mirror (Y flipped, from
+    `FFbxDataConverter`) and was not checked in the editor. Check `katana_bainha` with the Katana
+    as preview mesh first; if it is right, the others are too.
+  - Each prop's pivot is its Blender object origin. The Katana and Pistol FBXs embed only the base
+    colour; import their `_ORM.png` from `Art\` by hand.
 
 ---
 
@@ -124,7 +146,7 @@ As in Ratoman §1, with these additions:
 - **Morph targets on.** She has the 26 correctives and 22 expressions; the skirt and panty carry
   the same `CORR_*` names.
 - **Vertex colour: Replace.** Without it the jacket's and skirt's `Cloth_Mask` colours are dropped.
-- **Normals: import them.** Her meshes have custom normals.
+- **Normals: keep them.** In 5.7 (Interchange) that is **Recompute Normals off** (Common Meshes → Build; it is on by default). Her meshes have custom normals. Leave Recompute Tangents on.
 - **Bone influences: 8.** 1,613 body vertices use more than 4 (`Sophia_corretivos_UNREAL.md`).
   - Check the per-platform skinning limit for mobile. If the phone caps at 4, run
     `limitar_influencias.py` in Blender rather than letting Unreal cut silently. On Illitran it
@@ -134,24 +156,77 @@ As in Ratoman §1, with these additions:
 - **UV channels:** the body and the shirt each have their mask address on **UV 1**. Don't let
   anything generate lightmap UVs into channel 1; skeletal meshes normally don't.
 
-### Textures
+### The whole material map (2026-10-26)
 
-| texture | sRGB | compression |
-|---|---|---|
-| `*_ORM.png` (R occlusion, G roughness, B metallic) | **off** | Masks |
-| `masks_rgba.png` (body and shirt) | **off** | **VectorDisplacementmap (RGBA8)**: uncompressed. Filter **Nearest**, **NoMipmaps**, **Never Stream** |
-| everything else | on | default |
+**Don't import materials from the FBX** (Materials → Import Materials off). Interchange turns
+Blender's materials into instances of `FBXLegacyPhongSurfaceMaterial` with the wrong texture.
+Import the PNGs from `Art\` directly and build the materials below.
 
-### Materials (one section each)
+**Every texture, by section.** All paths are in `Art\`.
 
-- **Body.**
-  - Opaque, *Used with Skeletal Mesh* checked.
-  - The mask Custom node on WPO (step 4).
-  - Wounds that show as HP drops (one scalar, `HP`): `Art/sophia_feridas_UNREAL.md`.
-- **Shirt.** The same mask node, with its own texture.
-- **Panty.** Masked, with the texture's alpha → Opacity Mask.
-- **Glass lens.** Translucent.
-- **Everything with an ORM texture.** G → Roughness, B → Metallic.
+| FBX slot (material) | mesh | base colour | ORM | extra | material |
+|---|---|---|---|---|---|
+| `Sophia_Body_Fishnet` | `Body_Rigged` | `Sophia_Body_Fishnet_rede_unhas.png` (alts: `Sophia_vag_unhas.png` bare legs, `Sophia_Body_Redhead.png`) | none (roughness 0.5) | `sophia_masks\masks_rgba.png` (UV 1); `feridas\Sophia_Feridas_Tint/Mask/Normal.png` (UV 0) | `M_Sophia_Body` |
+| `Sophia_Shirt` | `Shirt` | `Sophia_Shirt.png` | `Sophia_Shirt_ORM.png` | `sophia_shirt_masks\masks_rgba.png` (UV 1) | `M_Sophia_Shirt` |
+| `Sophia_Skirt` | `Skirt` | `Sophia_Skirt.png` | `Sophia_Skirt_ORM.png` | | `M_Sophia_Base` |
+| `Sophia_Jacket` | `Jacket` | `Sophia_Jacket.png` | none | | `M_Sophia_Base` |
+| `Sophia_Panty` | `Lower_Bikini` | `Sophia_Panty.png` (alpha = lace holes) | `Sophia_Panty_ORM.png` | | `M_Sophia_Base`, Blend Mode **Masked** |
+| `Sophia_Choker` | `Choker` | `Sophia_Choker.png` | `Sophia_Choker_ORM.png` | | `M_Sophia_Base` |
+| `tripo_mat_…` | `Boots`, `Belt`, `Holster`, `Katana_Sheat` | `grruzam_lote\unreal\Movements_Intro\Sophia_tripo_image_…_0.png` | none | | `M_Sophia_Base` |
+| `Olhos` | `Olhos` | `Sophia_olhos.png` | none | | `M_Sophia_Base` |
+| `Dentes` | `Dentes` | `Sophia_dentes_dentes.png` | none | | `M_Sophia_Base` |
+| `Sophia_Upper_Bikini` | `Upper_Bikini` | `Sophia_Upper_Bikini.png` | none | hidden in game | `M_Sophia_Base` |
+| props | `Katana`, `Pistol` | `Sophia_Katana.png`, `Sophia_Pistol.png` | their `_ORM.png` | | `M_Sophia_Base` |
+| props | `Kitty_Headphone` | `Sophia_Kitty_Headphone.png` | none | | `M_Sophia_Base` |
+| props | `Glass_Rayban` | none (frame: flat colour) | none | lens slot: `M_Sophia_Lens` (Translucent) | |
+
+Measured 2026-10-26 on `sophia_katana_clips.blend`:
+- **The body masks still address the export file's body.** It has 14,442 vertices, one texel
+  each, with no shared texels. The hidden counts are 697/196/1602/1668, matching the report.
+- **The shirt PNG hides 315 vertices**, not the 330 in its report. The PNG is newer and is what
+  the game reads.
+
+**Texture settings**
+
+| texture | sRGB | compression | other |
+|---|---|---|---|
+| base colours | on | default | |
+| `*_ORM.png` | **off** | Masks | |
+| `masks_rgba.png` (body and shirt) | **off** | **VectorDisplacementmap (RGBA8)** | Filter **Nearest**, **NoMipmaps**, **Never Stream** |
+| `Sophia_Feridas_Tint` | on | BC7 | |
+| `Sophia_Feridas_Mask` | **off** | BC7 | |
+| `Sophia_Feridas_Normal` | off | Normalmap | **Flip Green Channel** |
+
+**Four materials.** All are Opaque unless stated, with *Used with Skeletal Mesh* checked.
+
+- **`M_Sophia_Base`**, for every plain piece.
+  - `BaseColor` (texture param) → Base Color. Its alpha → Opacity Mask, which is only read when
+    an instance sets Blend Mode to Masked (the panty).
+  - Static switch `UseORM`:
+    - on: `ORM` (texture param, sampler Masks); R → AO, G → Roughness, B → Metallic;
+    - off: scalar `Roughness` (0.6) and scalar `Metallic` (0).
+  - One instance per row of the table.
+- **`M_Sophia_Body`** = the base material plus two things:
+  - **Clothing masks:** the Custom node on WPO from `Art\sophia_jaqueta_chaos_cloth.md`, "Body
+    masks / In Unreal", with `BodyMasks`, TexCoord 1 and the vector `Wear`.
+  - **Wounds:** `HP`, `WoundSoft` and the three wound textures on UV 0, from
+    `Art\sophia_feridas_UNREAL.md`. They multiply the base colour, raise roughness and add a
+    normal.
+- **`M_Sophia_Shirt`** = the base material with ORM plus the same WPO mask node, reading
+  `sophia_shirt_masks\masks_rgba.png`. Only `Wear.R` (the jacket) matters for it. Put the Custom
+  node in a material function and use it in both the body and the shirt.
+- **`M_Sophia_Lens`**: Translucent, dark tint, opacity about 0.6.
+
+**What drives them at runtime** (Sophia's character Blueprint):
+- At BeginPlay, **Create Dynamic Material Instance** on the body slot and the shirt slot.
+- **`Wear`** (arms = jacket, chest = shirt, hips = skirt, legs = boots; 1 = worn) is set on
+  **both** DMIs whenever a piece goes on or off.
+- **`HP`** (0..1) is set on the body DMI only, eased over 0.3–0.5 s on damage.
+- Without the BP, the defaults show her fully dressed (`Wear` 1,1,1,1) and unhurt (`HP` 1).
+
+**What card 020 needs:** `M_Sophia_Base` and its instances only, so she shows up textured. The
+body's clothing masks are card 022 and the wounds come with damage (030). Until then, the body
+can use an `M_Sophia_Base` instance, and skin will poke through the clothes in places.
 
 ---
 
@@ -279,7 +354,10 @@ Use the Pose Asset, as in Ratoman §8. The 22 keys use ARKit names (`eyeBlink_L`
   each Grruzam clip keys; socket `katana_mao` in `sophia_soquetes.json`. Notifies: `katana_intro` swaps from
   the scabbard socket to `CC_Extra_Katana` at frame 5; `katana_embainhar` (Grruzam's `Idle_B_to_A`,
   which actually sheathes) swaps back to the scabbard socket at frame 30. The Blender curve
-  `katana_na_mao` in each action marks the in-hand frames. Clips come from
+  `katana_na_mao` in each action marks the in-hand frames. Those frames count from 1, as in Blender.
+  In Unreal the clip starts at frame 0, so the swaps are frame 4 (0.133 s) and frame 29 (0.967 s).
+  `grruzam_lote\unreal\katana_notifies.json` lists them for all 465 clips: 57 swap, and 408 keep
+  the katana where it was (259 in the hand, 149 in the scabbard). Clips come from
   `tools/blender/retarget_biped.py`, not Unreal retargeting.
 - **The retargeted clips key the face bones** (`CC_Base_FacialBone`, `JawRoot`, `UpperJaw`,
   the eyes). Expressions belong to the blendshapes and the expression controller, so strip those

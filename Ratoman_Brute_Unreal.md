@@ -70,7 +70,7 @@ Drag `Ratoman_Brute.fbx` into a folder, for example `/Game/Characters/RatomanBru
 | Convert Scene | on (default) | |
 | Force Front X Axis | off | |
 | Import Uniform Scale | 1.0 | |
-| Normals | Import Normals | |
+| Recompute Normals (Common Meshes → Build) | **off** | on by default in 5.7; off keeps the normals from the FBX. Recompute Tangents stays on |
 | Material | Create New Materials, Import Textures | |
 
 **5.7 imports FBX through Interchange.** The dialog is laid out differently from the old one: a
