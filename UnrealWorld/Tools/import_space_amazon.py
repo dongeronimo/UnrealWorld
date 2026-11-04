@@ -13,6 +13,12 @@ Materials are built here, not taken from the FBX: the importer never made any fo
 in empty on 2026-10-29), and three of them need settings an FBX cannot carry. One master
 (M_SpaceAmazon_Base, the shape of M_Sophia_Base without the ORM branch, which she has no textures for)
 and one instance per Blender material, with Blender's roughness and flat colours. Safe to run again.
+
+2026-11-03 (gurps export from expr/e32_katana.blend): the armour atlas, the two gloves and the
+scabbard got their slots, and the eyes are the anime texture. Weapons are not in the character FBX
+(exportar_pacote_unreal.py --soquetes): Props/Katana.fbx comes in as a static mesh in ROOT/Props with
+the scabbard's material. Its two sockets are set by hand from Props/soquetes_unreal.json (the guide,
+D:/UnrealWorld/SpaceAmazon_Unreal.md).
 """
 import glob
 import os
@@ -34,7 +40,11 @@ TEXTURES = [
     ("T_SpaceAmazon_Lashes", os.path.join(ART, "SpaceAmazon_Cilios.png")),
     ("T_SpaceAmazon_Teeth", os.path.join(ART, "SpaceAmazon_Dentes.png")),
     ("T_SpaceAmazon_Mouth", os.path.join(ART, "SpaceAmazon_Boca.png")),
-    ("T_SpaceAmazon_Eyes", os.path.normpath(os.path.join(ART, "..", "rosto", "olhos", "o2.png"))),
+    ("T_SpaceAmazon_Eyes", os.path.normpath(os.path.join(ART, "..", "expr", "e25_olho_anime.png"))),
+    ("T_SpaceAmazon_Armour", os.path.join(ART, "SpaceAmazon_tripo_rgb_020e62f1_15a8_4e27_adde_c48f0143a961.png")),
+    ("T_SpaceAmazon_Glove_L", os.path.join(ART, "SpaceAmazon_Left_Glove.png")),
+    ("T_SpaceAmazon_Glove_R", os.path.join(ART, "SpaceAmazon_Right_Glove.png")),
+    ("T_SpaceAmazon_Katana", os.path.join(ART, "SpaceAmazon_tripo_rgb_e45e460f_7eba_4f65_b196_4f7bd77e604a.png")),
 ]
 
 # (FBX slot prefix, the Blender material name; instance; texture; roughness; extra)
@@ -48,10 +58,18 @@ INSTANCES = [
     ("tripo_mat_282d6479", "MI_SpaceAmazon_Hair", "T_SpaceAmazon_Hair", 0.9, {"two_sided": True}),
     ("Dentes", "MI_SpaceAmazon_Teeth", "T_SpaceAmazon_Teeth", 0.3, {}),
     ("M_Boca", "MI_SpaceAmazon_Mouth", "T_SpaceAmazon_Mouth", 0.7, {"two_sided": True}),
-    ("Olhos", "MI_SpaceAmazon_Eyes", "T_SpaceAmazon_Eyes", 0.12, {}),
+    ("Olhos", "MI_SpaceAmazon_Eyes", "T_SpaceAmazon_Eyes", 0.35, {}),
     ("M_Lingua", "MI_SpaceAmazon_Tongue", None, 0.45, {"tint": unreal.LinearColor(0.305, 0.048, 0.061, 1)}),
     ("M_Orbita", "MI_SpaceAmazon_Socket", None, 0.7, {"two_sided": True, "tint": unreal.LinearColor(0.275, 0.055, 0.078, 1)}),
+    # the 14 armour pieces share one Tripo atlas; the skirt and the fins are open shells
+    ("tripo_mat_8916083a", "MI_SpaceAmazon_Armour", "T_SpaceAmazon_Armour", 0.9, {"two_sided": True}),
+    ("M_Left_Glove", "MI_SpaceAmazon_Glove_L", "T_SpaceAmazon_Glove_L", 0.9, {}),
+    ("M_Right_Glove", "MI_SpaceAmazon_Glove_R", "T_SpaceAmazon_Glove_R", 0.9, {}),
+    # the scabbard (skinned, in this FBX) and the katana (Props/Katana.fbx) share the Tripo atlas
+    ("tripo_mat_b100a64c", "MI_SpaceAmazon_Katana", "T_SpaceAmazon_Katana", 0.9, {"two_sided": True}),
 ]
+PROP_DIR = ROOT + "/Props"
+PROPS = [("Katana", "MI_SpaceAmazon_Katana")]
 
 assets = unreal.get_editor_subsystem(unreal.EditorAssetSubsystem)
 tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -200,6 +218,29 @@ def assign(mesh):
     mesh.set_editor_property("materials", slots)
 
 
+def import_props():
+    """Each weapon as a static mesh with its material. A failure here is logged, not raised: the
+    character import has already succeeded, and the sockets are set by hand anyway."""
+    for name, mi in PROPS:
+        src = os.path.join(ART, "Props", name + ".fbx")
+        if not os.path.isfile(src):
+            unreal.log_warning("SpaceAmazon: no prop %s (export with --soquetes)" % src)
+            continue
+        try:
+            o = unreal.FbxImportUI()
+            o.set_editor_properties({"import_mesh": True, "import_as_skeletal": False, "import_animations": False,
+                                     "import_materials": False, "import_textures": False,
+                                     "mesh_type_to_import": unreal.FBXImportType.FBXIT_STATIC_MESH})
+            o.static_mesh_import_data.set_editor_properties({"convert_scene": True, "force_front_x_axis": False,
+                                                             "combine_meshes": True, "auto_generate_collision": False})
+            tools.import_asset_tasks([task(src, PROP_DIR, o)])
+            sm = assets.load_asset(PROP_DIR + "/" + name)
+            sm.set_material(0, assets.load_asset(MAT_DIR + "/" + mi))
+            unreal.log("SpaceAmazon: prop %s/%s -> %s" % (PROP_DIR, name, mi))
+        except Exception as e:
+            unreal.log_warning("SpaceAmazon: prop %s did not import (%s); import it by hand (guide, step 4)" % (name, e))
+
+
 def main():
     run("Interchange.FeatureFlags.Import.FBX False")
     # Interchange's texture import asserts on the Slate application, which a commandlet does not have
@@ -227,6 +268,7 @@ def main():
             if not isinstance(a, unreal.AnimSequence):
                 raise RuntimeError("clip did not import: " + path)
             unreal.log("SpaceAmazon: clip %s, %d keys" % (path, a.get_editor_property("number_of_sampled_keys")))
+        import_props()
         # the task's save flag writes only the primary asset; the skeleton, physics asset, materials
         # and textures it created stay dirty, and the mesh on disk then points at nothing
         saved = assets.save_directory(ROOT, only_if_is_dirty=False, recursive=True)
