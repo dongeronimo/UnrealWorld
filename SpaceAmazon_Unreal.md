@@ -163,7 +163,7 @@ Check each one: right-click the socket → Add Preview Asset → `Props/Katana`.
 The conversion from Blender assumes the FBX's Y flip. If `katana_bainha` is wrong, the other one
 is too, and the fix is the rotation order, not new numbers. Tell me what you see.
 
-**Notifies.** Unreal counts frames from 0, one less than Blender:
+**Notifies.** Unreal counts frames from 0, one less than Blender: <---- Parei aqui
 
 | clip | frame | time | notify |
 |---|---|---|---|

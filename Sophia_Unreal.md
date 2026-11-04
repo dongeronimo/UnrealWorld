@@ -23,7 +23,7 @@ All paths are in `D:\UnrealWorld\Art\` unless noted.
 | **The file to export** | **`sophia_katana_clips.blend`** (corrected 2026-10-25; this row used to say `sophia_idle.blend`). It is `sophia_idle.blend` plus the katana bone, the scabbard on her back and the two katana clips. It still has the idles, the masks and the 52 shape keys, and the Grruzam batch builds every folder from it (`D:\gurps\tools\blender\grruzam-batch-plan.md`). `sophia_ruiva_preview.blend` is the same file with the redhead body texture, for looking only. Every other `sophia_*.blend` is an intermediate step |
 | **The exported FBXs** | `grruzam_lote\unreal\`: the character `Movements_Intro\Sophia.fbx` (no props, cm), the props `Props\*.fbx` with `Props\soquetes_unreal.json`, the 465 clips one folder each, and `katana_notifies.json` |
 | Wounds | `feridas\` and `sophia_feridas_UNREAL.md`: three textures and the Body material nodes, driven by one `HP` scalar |
-| Body mask textures | `sophia_masks\masks_rgba.png`: R arms (jacket), G chest (shirt), B hips (skirt), A legs (boots). 128×128 |
+| Body mask textures | `sophia_masks\masks_rgba.png`: R arms (jacket), G chest (shirt), B hips (skirt), A legs (boots). `sophia_masks\masks_rgba_2.png`: R panty, G belt (B, A unused, always visible). Both 128×128 |
 | Shirt mask texture | `sophia_shirt_masks\masks_rgba.png`: R = the jacket hides the shirt. 64×64 |
 | Notes on cloth, masks, materials and props | `sophia_jaqueta_chaos_cloth.md`. It records every decision, with the measurements behind it |
 | Correctives and thigh twist | `Sophia_corretivos_UNREAL.md` plus `Sophia_corretivos_referencia.csv` (the reference values to check against) |
@@ -148,6 +148,10 @@ As in Ratoman §1, with these additions:
 - **Vertex colour: Replace.** Without it the jacket's and skirt's `Cloth_Mask` colours are dropped.
 - **Normals: keep them.** In 5.7 (Interchange) that is **Recompute Normals off** (Common Meshes → Build; it is on by default). Her meshes have custom normals. Leave Recompute Tangents on.
 - **Bone influences: 8.** 1,613 body vertices use more than 4 (`Sophia_corretivos_UNREAL.md`).
+  In 5.7 this isn't an import option. Unreal keeps up to 12 unless capped by the mesh LOD's *Bone
+  Influence Limit* (0 = use the project's) or Project Settings → Rendering → Skinning → *Default
+  Bone Influence Limit*, which is per platform (0 = no cap). Keep both at 0. Checked in
+  `RendererSettings.h` and `GPUSkinPublicDefs.h` (2026-10-27).
   - Check the per-platform skinning limit for mobile. If the phone caps at 4, run
     `limitar_influencias.py` in Blender rather than letting Unreal cut silently. On Illitran it
     measured 2.05 mm of displacement at worst.
@@ -166,13 +170,13 @@ Import the PNGs from `Art\` directly and build the materials below.
 
 | FBX slot (material) | mesh | base colour | ORM | extra | material |
 |---|---|---|---|---|---|
-| `Sophia_Body_Fishnet` | `Body_Rigged` | `Sophia_Body_Fishnet_rede_unhas.png` (alts: `Sophia_vag_unhas.png` bare legs, `Sophia_Body_Redhead.png`) | none (roughness 0.5) | `sophia_masks\masks_rgba.png` (UV 1); `feridas\Sophia_Feridas_Tint/Mask/Normal.png` (UV 0) | `M_Sophia_Body` |
+| `Sophia_Body_Fishnet` | `Body_Rigged` | `Sophia_Body_Fishnet_rede_unhas.png` (alts: `Sophia_vag_unhas.png` bare legs, `Sophia_Body_Redhead.png`) | none (roughness 0.5) | `sophia_masks\masks_rgba.png` and `masks_rgba_2.png` (UV 1); `feridas\Sophia_Feridas_Tint/Mask/Normal.png` (UV 0) | `M_Sophia_Body` |
 | `Sophia_Shirt` | `Shirt` | `Sophia_Shirt.png` | `Sophia_Shirt_ORM.png` | `sophia_shirt_masks\masks_rgba.png` (UV 1) | `M_Sophia_Shirt` |
 | `Sophia_Skirt` | `Skirt` | `Sophia_Skirt.png` | `Sophia_Skirt_ORM.png` | | `M_Sophia_Base` |
 | `Sophia_Jacket` | `Jacket` | `Sophia_Jacket.png` | none | | `M_Sophia_Base` |
 | `Sophia_Panty` | `Lower_Bikini` | `Sophia_Panty.png` (alpha = lace holes) | `Sophia_Panty_ORM.png` | | `M_Sophia_Base`, Blend Mode **Masked** |
 | `Sophia_Choker` | `Choker` | `Sophia_Choker.png` | `Sophia_Choker_ORM.png` | | `M_Sophia_Base` |
-| `tripo_mat_…` | `Boots`, `Belt`, `Holster`, `Katana_Sheat` | `grruzam_lote\unreal\Movements_Intro\Sophia_tripo_image_…_0.png` | none | | `M_Sophia_Base` |
+| `tripo_mat_…`, `Sophia_Boots`, `Sophia_Belt` | `Holster`, `Katana_Sheat`; `Boots`; `Belt` (own slots since 2026-10-27, so each hides alone) | `grruzam_lote\unreal\Movements_Intro\Sophia_tripo_image_…_0.png` | none | | `M_Sophia_Base` |
 | `Olhos` | `Olhos` | `Sophia_olhos.png` | none | | `M_Sophia_Base` |
 | `Dentes` | `Dentes` | `Sophia_dentes_dentes.png` | none | | `M_Sophia_Base` |
 | `Sophia_Upper_Bikini` | `Upper_Bikini` | `Sophia_Upper_Bikini.png` | none | hidden in game | `M_Sophia_Base` |
@@ -192,7 +196,7 @@ Measured 2026-10-26 on `sophia_katana_clips.blend`:
 |---|---|---|---|
 | base colours | on | default | |
 | `*_ORM.png` | **off** | Masks | |
-| `masks_rgba.png` (body and shirt) | **off** | **VectorDisplacementmap (RGBA8)** | Filter **Nearest**, **NoMipmaps**, **Never Stream** |
+| `masks_rgba.png`, `masks_rgba_2.png` (body and shirt) | **off** | **VectorDisplacementmap (RGBA8)** | Filter **Nearest**, **NoMipmaps**, **Never Stream** |
 | `Sophia_Feridas_Tint` | on | BC7 | |
 | `Sophia_Feridas_Mask` | **off** | BC7 | |
 | `Sophia_Feridas_Normal` | off | Normalmap | **Flip Green Channel** |
@@ -208,12 +212,14 @@ Measured 2026-10-26 on `sophia_katana_clips.blend`:
   - One instance per row of the table.
 - **`M_Sophia_Body`** = the base material plus two things:
   - **Clothing masks:** the Custom node on WPO from `Art\sophia_jaqueta_chaos_cloth.md`, "Body
-    masks / In Unreal", with `BodyMasks`, TexCoord 1 and the vector `Wear`.
+    masks / In Unreal", with `BodyMasks` and `BodyMasks2`, TexCoord 1 and the vectors `Wear` and
+    `Wear2`.
   - **Wounds:** `HP`, `WoundSoft` and the three wound textures on UV 0, from
     `Art\sophia_feridas_UNREAL.md`. They multiply the base colour, raise roughness and add a
     normal.
 - **`M_Sophia_Shirt`** = the base material with ORM plus the same WPO mask node, reading
-  `sophia_shirt_masks\masks_rgba.png`. Only `Wear.R` (the jacket) matters for it. Put the Custom
+  `sophia_shirt_masks\masks_rgba.png`. Only `Wear.R` (the jacket) matters for it; give its
+  `BodyMasks2` a white texture, or a static switch that skips the second sample. Put the Custom
   node in a material function and use it in both the body and the shirt.
 - **`M_Sophia_Lens`**: Translucent, dark tint, opacity about 0.6.
 
@@ -253,8 +259,9 @@ In short:
   `SampleLevel(…, UV1, 0)`. It returns a NaN offset for a hidden vertex whose slot is worn, which
   drops every triangle touching it, in every pass including the shadows. It is the same trick as
   Unity's.
-- **`Wear`** is a float4 vector parameter: arms, chest, hips, legs. Set it on **both** the body
-  and the shirt material instances whenever a piece goes on or off.
+- **`Wear`** is a float4 vector parameter: arms, chest, hips, legs. **`Wear2`** is panty, belt
+  (and two spare). Set them on **both** the body and the shirt material instances whenever a piece
+  goes on or off.
 - Keep **WPO Disable Distance** at 0, and **Max WPO Displacement** at 0, or the masks switch off
   quietly.
 - Mobile has no TSR, virtual shadow maps or Lumen. If a desktop build turns them on, run the NaN
@@ -363,4 +370,9 @@ Use the Pose Asset, as in Ratoman §8. The 22 keys use ARKit names (`eyeBlink_L`
   the eyes). Expressions belong to the blendshapes and the expression controller, so strip those
   tracks on import, or run the controller after the clips in the AnimBP. The idles and their
   transitions do not key them.
-- **The hips mask hides the crotch.** Taking the panty off while the skirt is on shows a hole.
+- ~~**The hips mask hides the crotch.**~~ Fixed 2026-10-27: the panty and the belt have their own
+  masks, and the skirt's mask no longer hides the skin under the panty (it went from 1,602 to 864
+  vertices), so the panty can come off under the skirt. The belt hides 312 vertices, the panty 502.
+  The four older slots were kept as they were. The boots and the belt also got their own material
+  slots (`Sophia_Boots`, `Sophia_Belt`, copies of the tripo material), so each mesh can be hidden
+  alone; the holster and scabbard keep `tripo_mat`.

@@ -26,8 +26,8 @@ card's machinery a hit result.
   weapon ability calls it.
 - **Hit reaction.**
   - Health dropping, without dying, sends `Event.Hit.Received` to the target.
-  - `GA_HitReact`, triggered by that event, plays the hit react montage (018 for Ratoman; Lyra or
-    GAS clips for Sophia, 029).
+  - `GA_HitReact`, triggered by that event, plays the hit react montage (018 for Ratoman; for
+    Sophia, the Grruzam hit reacts already exported to her skeleton, 044).
   - It applies `GE_Stagger` (a short `State.Stunned` and a `MoveSpeedMultiplier` drop), and it
     cancels abilities tagged `State.Attacking` according to the ability's interruptibility.
 - **Death.** Health at 0 triggers `GA_Death`:

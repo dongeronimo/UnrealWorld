@@ -54,6 +54,17 @@ does, it's the export file, and §0 gets corrected.
   465 clips, ready for when 026 imports them.
 - The old FBX with props is not kept in the repo. Re-export it if needed: drop `sem_props`.
 
+*2026-10-27, ready to import:*
+- **The files are current, and checked.** The FBX body and shirt match `sophia_katana_clips.blend` and
+  `sophia_ruiva_preview.blend` exactly: 14,442 / 1,757 vertices, the same UV 0 and UV 1, 52 shape
+  keys, 118 bones. The masks (UV 1) and the wounds (UV 0) were generated against this body. The
+  FBX's embedded textures (`Sophia.fbm`) are byte-identical to the PNGs in `Art\`.
+- **`UnrealWorld/Tools/import_sophia.py`** imports the 26 textures with the settings from
+  `Sophia_Unreal.md` §2, builds `M_Sophia_Base` and `M_Sophia_Lens` plus 14 instances, and assigns
+  them to the meshes by FBX slot name. Run it from the Output Log with `py "<path>"`. It needs the
+  `PythonScriptPlugin` (editor only, enabled in the `.uproject` the same day). Only the meshes are
+  imported by hand.
+
 **Still open, Unreal side:** the import with §2's options, materials and textures (plus the three
 wound textures of `Art/sophia_feridas_UNREAL.md`), the §3 checks, the sockets, and the mobile
 skinning limit.

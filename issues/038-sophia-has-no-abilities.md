@@ -1,6 +1,6 @@
 # 038 — Sophia's moves aren't abilities: shooting, the katana combo, draw and sheathe, and dodge
 
-**Area:** gameplay + anim · **Status:** open · **Blocked by:** 037, 027, 028, 030 · **Blocks:** 029
+**Area:** gameplay + anim · **Status:** open · **Blocked by:** 037, 027, 028, 030, 044 (the dodge montage) · **Blocks:** 029
 
 ## Context
 

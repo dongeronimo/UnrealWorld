@@ -32,6 +32,19 @@ The full recipe and the HLSL are in `Art/sophia_jaqueta_chaos_cloth.md`, under "
 - Test **on the phone**. Mobile has no TSR, VSM or Lumen, but the NaN trick must survive the mobile
   renderer and its shadow pass. The Masked-material fallback is in the notes, if it doesn't.
 
+## Progress
+
+*2026-10-27, six slots and own sections (Blender side):*
+- **Panty and belt masks.** The body has six slots now: arms, chest, hips, legs (boots), panty,
+  belt. `masks_rgba.png` is the first four, the new `masks_rgba_2.png` is R panty, G belt. The skirt's
+  mask no longer hides the skin under the panty (1,602 to 864 vertices), so the panty can come off
+  under the skirt. The material needs `BodyMasks2` and `Wear2` (HLSL in
+  `Art/sophia_jaqueta_chaos_cloth.md`, "In Unreal").
+- **Boots and belt have their own material slots** (`Sophia_Boots`, `Sophia_Belt`), so
+  `ShowMaterialSection` hides each alone. `Sophia.fbx` is re-exported; reimport it in Unreal, then
+  run `import_sophia.py --reimport`.
+- Details and checks: `Art/sophia_jaqueta_chaos_cloth.md`, "Panty and belt masks".
+
 ## The tempting wrong fixes
 
 - **Cutting the body mesh into regions.** It was measured and discarded in gurps (045 §2): seams,

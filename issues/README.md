@@ -19,6 +19,7 @@ Project layout:
 D:\UnrealWorld\
   running_the_reconstruction.md, arcore_in_unreal.md, adding_open_chisel.md   how the AR side was built
   Ratoman_Brute_Unreal.md, Sophia_Unreal.md, Sophia_Animation_Plan.md         character plans
+  Arena_Vertical_Plan.md          the order of the cards from Sophia's import to the arena loop
   klingensmith2015chisel.pdf      the Chisel paper
   Art\                            Blender sources and exports
   blender_utils\                  project-local Blender scripts
@@ -66,17 +67,22 @@ Measurement comes before navmesh. That order is the lesson from ToySoldiers (002
 
 ### Sophia front
 
+The order across all fronts, its checkpoints and the decisions it waits on are in
+[`Arena_Vertical_Plan.md`](../Arena_Vertical_Plan.md) (2026-10-27).
+
 | # | Title | Area | Blocks |
 |---|---|---|---|
-| [020](020-sophia-is-not-in-unreal.md) | Sophia isn't in Unreal: export, import, first check | art + anim | 021–029 |
+| [020](020-sophia-is-not-in-unreal.md) | Sophia isn't in Unreal: export, import, first check | art + anim | 021–029, 043, 044 |
 | [021](021-sophias-hips-collapse.md) | Her hips collapse: correctives and thigh twist have no driver | anim | 029 |
-| [026](026-sophia-cannot-walk.md) | She can't walk: no IK Rig, no locomotion | anim | 027, 029 |
 | [022](022-sophias-masks-are-not-in-the-materials.md) | Body and shirt masks aren't in the materials | art + render | 029 |
+| [043](043-sophias-wounds-never-show.md) | Her wounds never show: the HP wound layer is in Blender only | art + render + gameplay | — |
+| [026](026-sophia-cannot-walk.md) | She can't walk: no IK Rig, no locomotion | anim | 027, 029, 044 |
 | [023](023-sophias-physics-asset-and-hair.md) | No physics asset, and her hair goes through the jacket | anim + physics | 024, 030 |
+| [024](024-sophias-jacket-hangs-rigid.md) | Her jacket hangs rigid | art + physics | — |
+| [025](025-sophias-face-never-moves.md) | Her face never moves | anim | — |
 | [027](027-sophia-has-no-commissar-stance.md) | No stance: ready pose, aim offset, shot | anim + tools | 029, 030 |
 | [028](028-the-katana-never-leaves-the-scabbard.md) | The katana never leaves the scabbard | anim + content | 029, 030 |
-| [025](025-sophias-face-never-moves.md) | Her face never moves | anim | — |
-| [024](024-sophias-jacket-hangs-rigid.md) | Her jacket hangs rigid | art + physics | — |
+| [044](044-sophia-has-no-clips-to-be-hurt-with.md) | No clips to be hurt with: hit react, death, dodge, injured run | anim + content | 030 on her, 038, 043 |
 | [029](029-sophia-cannot-be-played.md) | She can't be played: no character, controls or camera on the phone | gameplay + anim | 031, 032 |
 
 ### Fight systems front (GAS)

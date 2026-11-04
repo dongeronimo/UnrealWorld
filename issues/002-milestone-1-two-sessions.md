@@ -71,6 +71,8 @@ Only then the navmesh (012).
 - **Arena:** 031–033.
 - **The room session:** 034.
 
+The arena half has a plan that orders these fronts: `Arena_Vertical_Plan.md` (2026-10-27).
+
 ## The tempting wrong fixes
 
 - **Starting the navmesh before the field is stable.** It's what ToySoldiers did. A dynamic
