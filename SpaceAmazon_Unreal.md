@@ -73,7 +73,7 @@ commands. Steps 5 to 8 are what comes after, and none of them has been done for 
 Close the editor first (the commandlet and an open editor fight over the same assets), then:
 
 ```
-"D:\UE5.7\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UnrealWorld\UnrealWorld\UnrealWorld.uproject" -run=pythonscript -script="Tools/import_space_amazon.py"
+"D:\UE5.7\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UnrealWorld\UnrealWorld\UnrealWorld.uproject" -run=pythonscript -script="D:/UnrealWorld/UnrealWorld/Tools/import_space_amazon.py"
 ```
 
 Or, with the editor open: Output Log, switch the box to **Python**, and run
@@ -108,14 +108,14 @@ The 48 corrective curves and the thigh/forearm twist live in `CR_SpaceAmazon`, g
 recipes Blender exported. Never edit that graph by hand; regenerate it:
 
 ```
-"D:\UE5.7\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UnrealWorld\UnrealWorld\UnrealWorld.uproject" -run=pythonscript -script="Tools/gerar_control_rig.py D:/UnrealWorld/Art/space_amazon/unreal/SpaceAmazon_receitas.json /Game/Chars/SpaceAmazon/SpaceAmazon /Game/Chars/SpaceAmazon/CR_SpaceAmazon"
+"D:\UE5.7\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UnrealWorld\UnrealWorld\UnrealWorld.uproject" -run=pythonscript -script="D:/UnrealWorld/UnrealWorld/Tools/gerar_control_rig.py D:/UnrealWorld/Art/space_amazon/unreal/SpaceAmazon_receitas.json /Game/Chars/SpaceAmazon/SpaceAmazon /Game/Chars/SpaceAmazon/CR_SpaceAmazon"
 ```
 
 Then prove it on a clip that moves a lot. It fails loudly (nonzero exit) above 0.05 degrees or 0.002
 in curve value:
 
 ```
-"D:\UE5.7\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UnrealWorld\UnrealWorld\UnrealWorld.uproject" -run=pythonscript -script="Tools/paridade_control_rig.py D:/UnrealWorld/Art/space_amazon/unreal/SpaceAmazon_receitas.json /Game/Chars/SpaceAmazon/animclips/SpaceAmazon_aerobic_dance_315220 /Game/Chars/SpaceAmazon/CR_SpaceAmazon 0.05 D:/UnrealWorld/Art/space_amazon/unreal/SpaceAmazon_curvas_ref.json"
+"D:\UE5.7\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UnrealWorld\UnrealWorld\UnrealWorld.uproject" -run=pythonscript -script="D:/UnrealWorld/UnrealWorld/Tools/paridade_control_rig.py D:/UnrealWorld/Art/space_amazon/unreal/SpaceAmazon_receitas.json /Game/Chars/SpaceAmazon/animclips/SpaceAmazon_aerobic_dance_315220 /Game/Chars/SpaceAmazon/CR_SpaceAmazon 0.05 D:/UnrealWorld/Art/space_amazon/unreal/SpaceAmazon_curvas_ref.json"
 ```
 
 Run it again with `SpaceAmazon_katana_intro` and `SpaceAmazon_katana_embainhar` in place of the
@@ -250,9 +250,8 @@ do it after step 6 (both touch the body material).
   - Her presets (laugh, evil laugh, happy, frown, loathing, pain, scream, cry) also turn the ear bones and
     the jaw. Those are Blender drivers on custom properties and do not cross the FBX. They need an
     expression controller in Unreal: a separate piece of work.
-- **More clips.** Locomotion by retargeting from Manny/Quinn (IK Rig, as in Sophia §9). The 465 Grruzam
-  katana clips were converted for Sophia only. For Fearing they would run through the same
-  `retarget_biped.py` batch from `e32_katana.blend`.
+- **More clips.** The Grruzam katana clips are converted onto her by the batch (§10). Other locomotion could come
+  from Manny/Quinn by IK Rig retargeting (Sophia §9).
 - **Waiting in Blender** (the Fearing backlog): the wrist-cannon shot, the force field, and the fin animations.
 
 ## 9. The order that works
@@ -263,3 +262,44 @@ do it after step 6 (both touch the body material).
 4. The katana sockets, notifies and attach (§4). This is the first thing that is new for her in Unreal.
 5. Masks (§6), then wear (§7).
 6. Plates (§5) when the first Unreal-side motion arrives. Physics and expressions after that (§8).
+
+## 10. The Grruzam clips (the batch)
+
+These are Fearing's own conversions of the 465 Grruzam katana clips, made in her file. Sophia's clips cannot be
+used: Fearing's twist, plates, pads, fins and scabbard exist in a clip only as baked bones. The process is in
+gurps `tools/blender/grruzam-batch-plan.md` (the Fearing section at the top). The clip list is in
+`grruzam-clip-map-fearing.md`, next to it.
+
+**Blender side** (gurps `tools/blender`, system Python):
+
+```
+python lote_grruzam.py --quem fearing rodar 4 5 10 --paralelo 3 --ate 22:00
+python lote_grruzam.py --quem fearing exportar 4        (one folder at a time)
+python lote_grruzam.py --quem fearing notificacoes      (after every export)
+python lote_grruzam.py --quem fearing mapa
+```
+
+The FBX files land in `Art/space_amazon/grruzam_lote/unreal/<folder>/SpaceAmazon_*.fbx`. They hold only the
+armature, on the same 142-bone skeleton as `SpaceAmazon.fbx`, so the character never needs a reimport for them.
+
+**Import**, with the editor closed:
+
+```
+"D:\UE5.7\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UnrealWorld\UnrealWorld\UnrealWorld.uproject" -run=pythonscript -script="D:/UnrealWorld/UnrealWorld/Tools/clipes_space_amazon.py Movements_Intro Movements_Idle Movements_Walk_A"
+"D:\UE5.7\UE_5.7\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" "D:\UnrealWorld\UnrealWorld\UnrealWorld.uproject" -run=pythonscript -script="D:/UnrealWorld/UnrealWorld/Tools/notifies_space_amazon.py"
+```
+
+With the editor open, use the Output Log (Python): `py "D:/UnrealWorld/UnrealWorld/Tools/clipes_space_amazon.py" Movements_Walk_A`.
+Run it without folder names to import every exported folder.
+
+- **One Unreal folder per batch folder.** The clips go to `/Game/Chars/SpaceAmazon/animclips/<folder>/`. Grruzam
+  reuses 10 clip names across two folders, so a flat folder would overwrite one clip of each pair.
+- **Root motion.** Clips named `_Root`, and every clip in a `RootMotion` folder, get **Enable Root Motion**. The travel is
+  on `RL_BoneRoot`. The in-place twin of each one has its root at rest.
+- **Notifies.** `notifies_space_amazon.py` owns every `Attach To Socket` notify on these clips. It removes the ones that
+  are there, including the hand-placed ones, then adds the json's on a track named `Katana`: `katana_mao` at the draw,
+  `katana_bainha` at the sheathe. It does the same for the flat `animclips/SpaceAmazon_katana_intro` and
+  `_katana_embainhar`, which are the same clips (checked to 0.001 mm in Blender). Running it a second time changes
+  nothing. A clip that starts or ends with the katana in her hand gets no notify for that. The state machine must
+  already have the katana in her hand.
+- **Expressions** stay at rest in these clips (jaw and ears included). The Pose Blender's additive expressions ride on top.

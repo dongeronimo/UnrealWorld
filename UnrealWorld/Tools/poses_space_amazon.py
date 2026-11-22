@@ -1,7 +1,7 @@
 """Fearing's expressions as a Pose Asset: imports SpaceAmazon_Expressoes_poses.fbx and builds
 PA_SpaceAmazon_Expressoes from it, headless or in the editor.
 
-    UnrealEditor-Cmd.exe UnrealWorld.uproject -run=pythonscript -script="Tools/poses_space_amazon.py"
+    UnrealEditor-Cmd.exe UnrealWorld.uproject -run=pythonscript -script="D:/UnrealWorld/UnrealWorld/Tools/poses_space_amazon.py"
     Output Log, box on Cmd:  py D:/UnrealWorld/UnrealWorld/Tools/poses_space_amazon.py
 
 The clip comes from gurps tools/blender/poses_expressoes.py, then exportar_unreal.py: frame 0 neutral, then

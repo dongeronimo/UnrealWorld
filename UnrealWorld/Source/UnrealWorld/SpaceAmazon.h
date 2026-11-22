@@ -60,8 +60,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Expression", meta = (ClampMin = 0, ClampMax = 1))
 	float CryWeight = 0.0f;
 
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Gear")
 	TObjectPtr<UStaticMeshComponent> Katana;
+
+	UFUNCTION(BlueprintCallable)
+	bool IsTargetLocked();
+
+protected:
+
 };
 UNREALWORLD_API DECLARE_LOG_CATEGORY_EXTERN(SpaceAmazonLog, Error, All);

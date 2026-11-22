@@ -37,3 +37,10 @@ ASpaceAmazon::ASpaceAmazon()
 	Katana->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
 	Katana->ComponentTags.Add(KatanaTag);
 }
+
+bool ASpaceAmazon::IsTargetLocked()
+{
+	//TODO: Evaluates whether we have a target locked. We don't have any targeting system yet
+	// so it must return either always false or always true.
+	return false;
+}
