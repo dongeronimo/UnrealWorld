@@ -20,6 +20,7 @@ public class UnrealWorld : ModuleRules
             "HeadMountedDisplay", // IXRCamera::GetPassthroughCameraUVs_RenderThread        
             "Reconstruction",     // FTsdfReconstruction, the TSDF (OpenChisel inside)
             "RealtimeMeshComponent", // chunk meshes, updated in place on every remesh
+            "AIModule",          // I need AAIController
         });
 
         if (Target.Platform == UnrealTargetPlatform.Android)

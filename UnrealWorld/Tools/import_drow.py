@@ -22,10 +22,22 @@ the C++ USocketTools::SetMeshSocket, which creates or updates them in place.
 
 Fails loudly: a piece on another skeleton, a slot with no material, a mesh whose morph targets are not its
 Blender shape keys, a missing texture. Safe to run again: it reimports over the same assets.
+
+    -script="D:/UnrealWorld/UnrealWorld/Tools/import_drow.py texturas"
+only reimports the manifest's textures over T_Drow_* and saves them. Meshes, materials, clips and the 465 batch clips
+stay untouched, since a full run rewrites the whole /Game/Chars/Drow tree (drow handoff, recolour step 4,
+2026-11-22: only the skin, eye and hair PNGs changed, and they keep their paths).
+
+    -script="D:/UnrealWorld/UnrealWorld/Tools/import_drow.py pecas"
+reimports only the pieces: their textures, their material instances and the 14 Pecas/*.fbx, and saves only those.
+Then it deletes the T_Drow_* textures the manifest no longer names, if nothing references them. Written for step 7-8
+(drow handoff, 2026-11-22): textura_peca.py gave each piece its own small texture and a new UV0, so the meshes and
+the materials change but the leader, the clips and the props do not.
 """
 import json
 import os
 import re
+import sys
 
 import unreal
 
@@ -228,6 +240,12 @@ def assign(mesh, entry, mis):
         s = slots[i]
         slot = clean(str(s.get_editor_property("material_slot_name")))
         match = [m for m in entry["materiais"] if slot.startswith(clean(m))]
+        if not match and len(entry["materiais"]) == 1:
+            # textura_peca.py (2026-11-22) renamed the Tripo materials (tripo_mat_<hash>) to M_<Piece>. A reimport
+            # adds the new slot and keeps the old one, which no section uses any more; removing it would shift the
+            # sections' indices. The piece has one material, so the old slot gets it too
+            match = list(entry["materiais"])
+            log("%s: slot %s, from an earlier import, gets %s too" % (mesh.get_name(), slot, match[0]))
         if not match:
             missing.append(slot)
             continue
@@ -298,6 +316,52 @@ def import_props(socket_mesh):
     assets.save_loaded_asset(socket_mesh)
 
 
+def import_pieces(manifest, keys, tex):
+    """The pieces alone: material instances over the existing master, the 14 meshes onto the existing skeleton.
+    The leader is loaded, not reimported. Saves only what it touched."""
+    for name in sorted(set(tex.values())):
+        assets.save_asset(TEX_DIR + "/" + name, only_if_is_dirty=False)
+    base = assets.load_asset(MAT_DIR + "/M_Drow_Base")
+    leader = assets.load_asset("%s/%s" % (ROOT, NAME))
+    if base is None or not isinstance(leader, unreal.SkeletalMesh):
+        raise RuntimeError("pecas needs a full import first: no %s/M_Drow_Base or %s/%s" % (MAT_DIR, ROOT, NAME))
+    skeleton = leader.skeleton
+    mis = build_instances(manifest, keys, tex, base)
+    pieces = [f for f in manifest["fbx"] if not f["lider"]]
+    tools.import_asset_tasks([task(os.path.join(ART, f["arquivo"]), PIECE_DIR, mesh_options(skeleton)) for f in pieces])
+    for f in pieces:
+        m = assets.load_asset("%s/%s" % (PIECE_DIR, f["nome"]))
+        if not isinstance(m, unreal.SkeletalMesh):
+            raise RuntimeError("piece did not import: %s/%s" % (PIECE_DIR, f["nome"]))
+        if m.skeleton != skeleton:
+            raise RuntimeError("%s is on %s, not %s" % (f["nome"], m.skeleton.get_path_name(), skeleton.get_path_name()))
+        assign(m, f, mis)
+        n, lost = check_morphs(m, f)
+        assets.save_loaded_asset(m)
+        log("%s: %d morph targets, %d material slots%s" % (
+            m.get_name(), n, len(m.get_editor_property("materials")), ", hidden in Blender" if f["escondida"] else ""))
+    assets.save_loaded_asset(skeleton, only_if_is_dirty=True)
+    # the old 4K atlases: named after their PNG (drow_tenis, drow_cabelo_coque, ...), which no material reads now
+    wanted = {t.lower() for t in tex.values()}
+    leader_tex = [manifest["materiais"][m]["imagem"] for m in next(f for f in manifest["fbx"] if f["lider"])["materiais"]]
+    wanted |= {"t_drow_" + re.sub(r"^drow_", "", os.path.splitext(os.path.basename(x))[0], flags=re.I).lower()
+               for x in leader_tex if x}
+    for path in assets.list_assets(TEX_DIR, recursive=False, include_folder=False):
+        name = path.split("/")[-1].split(".")[0]
+        if not name.startswith("T_Drow_") or name.lower() in wanted:
+            continue
+        refs = assets.find_package_referencers_for_asset(path.split(".")[0], load_assets_to_confirm=True)
+        if refs:
+            log("kept %s: still referenced by %s" % (name, list(refs)))
+        elif assets.delete_asset(path.split(".")[0]):
+            log("deleted %s: no material reads it" % name)
+        else:
+            raise RuntimeError("could not delete " + path)
+    log("pecas: %d pieces, %d textures, %d material instances reimported and saved; leader, clips and props untouched"
+        % (len(pieces), len(set(tex.values())), len(mis)))
+
+
+
 def main():
     with open(os.path.join(ART, NAME + "_modular.json"), encoding="utf-8") as fh:
         manifest = json.load(fh)
@@ -306,8 +370,20 @@ def main():
     run("Interchange.FeatureFlags.Import.PNG False")
     try:
         keys = instance_names(manifest)
+        if "pecas" in sys.argv[1:]:
+            # only the pieces' materials: the leader's textures and instances stay as they are
+            keys = {m: k for m, k in keys.items()
+                    if any(m in f["materiais"] for f in manifest["fbx"] if not f["lider"])}
         tex = import_textures(manifest, keys)
+        if "texturas" in sys.argv[1:] and "pecas" not in sys.argv[1:]:
+            for name in sorted(set(tex.values())):
+                assets.save_asset(TEX_DIR + "/" + name, only_if_is_dirty=False)
+            log("texturas: %d textures reimported and saved; meshes, materials and clips untouched" % len(set(tex.values())))
+            return
         leader_entry = next(f for f in manifest["fbx"] if f["lider"])
+        if "pecas" in sys.argv[1:]:
+            import_pieces(manifest, keys, tex)
+            return
         mis = build_instances(manifest, keys, tex, build_base(tex[leader_entry["materiais"][0]]))
 
         tools.import_asset_tasks([task(os.path.join(ART, leader_entry["arquivo"]), ROOT, mesh_options())])
