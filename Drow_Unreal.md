@@ -55,6 +55,11 @@ instances and the 14 `Pecas/*.fbx`, saves only those, and deletes the `T_Drow_*`
 names, if nothing references them. The leader, the skeleton, the clips and the props are not touched. Re-export
 the package first (the manifest carries the PNG paths).
 
+**The body masks changed** (gurps drow handoff, step 9; package exported with `--mascaras D:/drow/mascaras`):
+`UE"D:/UnrealWorld/UnrealWorld/Tools/import_drow.py mascaras"` does what `pecas` does, plus the mask textures, `M_Drow_Masked`
+and the leader reimported (the body carries the mask address as UV 1). It fails if the leader's physics asset, post
+process Anim Blueprint or morph count change on the reimport, and sets the sockets again. Clips and props untouched.
+
 A C++ change needs the build first (`Engine\Build\BatchFiles\Build.bat UnrealWorldEditor Win64 Development
 -Project=...`).
 
@@ -95,7 +100,19 @@ assets changed, 5 old 4K textures deleted, morph counts as on 2026-11-21, `check
 - Sockets are on the **`Drow` mesh**, not the skeleton (Mesh editor → Skeleton Tree). `pistola_mao` does not exist
   yet (step 11).
 - Two-sided materials: only the braid (its thin locks are open sheets) and the mouth. The rest rely on culling.
-- The skin under a garment still renders. Body masks are step 9.
+- **Body masks (2026-11-23).** The skin under a worn piece is not drawn, so it cannot poke through. `M_Drow_Masked` is
+  `M_Drow_Base` plus a Custom node on World Position Offset that reads the mask on UV 1 and returns NaN for a hidden
+  vertex of a worn slot (HLSL in `import_drow.py`, `MASK_HLSL`; the recipe is Sophia's,
+  `Art/sophia_jaqueta_chaos_cloth.md` "Body masks"). Parent of `MI_Drow_Base_Body_Rigged` (`BodyMasks` =
+  `T_Drow_BodyMasks`, `BodyMasks2` = `T_Drow_BodyMasks2`), `MI_Drow_Shirt` (`T_Drow_ShirtMasks`) and `MI_Drow_Gym_Top`
+  (`T_Drow_GymTopMasks`); the shirt and the gym top are masked by the jacket. `Wear` = (Jacket, Shirt, Gym_Top,
+  Cargo_Pants), `Wear2` = (Miniskirt, Bikini_Bottom, Boots, Tennis), 1 = worn; on the shirt and the gym top only
+  `Wear.R` (the jacket). `ADrow::UpdateBodyMasks` sets them from the pieces' Visible flags on construction;
+  `SetPieceWorn(Piece, bWorn)` in game. The master's default is 0: nothing hides until the C++ runs.
+  - Keep Max WPO Displacement 0 and the component's WPO Disable Distance 0, or the masks switch off silently.
+  - The NaN is safe here: no TSR, no virtual shadow maps, no velocity pass (`DefaultEngine.ini`). If any comes back,
+    use the Masked fallback in Sophia's notes.
+  - Not masked: the choker, the holster, the hairs, the scabbard, and the bikini under the miniskirt.
 
 ## 3. Look at her (done 2026-11-21, all OK)
 

@@ -6,6 +6,8 @@
 #include "Engine/CollisionProfile.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -23,6 +25,38 @@ namespace
 		{TEXT("Hair_Braid"), true}, {TEXT("Hair_Ponytail"), false}, {TEXT("Hair_High_Bum"), false},
 		{TEXT("Choker"), false}, {TEXT("Holster"), true}, {TEXT("Katana_Sheat"), true},
 	};
+
+	// The mask slots in channel order: Wear = R, G, B, A of masks_rgba.png, Wear2 = masks_rgba_2.png (gurps
+	// outfits/drow.json "masks"; generate_outfit_masks.py writes the channels in that order).
+	const TCHAR* const MaskSlots[8] = {
+		TEXT("Jacket"), TEXT("Shirt"), TEXT("Gym_Top"), TEXT("Cargo_Pants"),
+		TEXT("Miniskirt"), TEXT("Bikini_Bottom"), TEXT("Boots"), TEXT("Tennis"),
+	};
+	const FName MaskedMaterial(TEXT("M_Drow_Masked"));
+
+	// Every section whose material is M_Drow_Masked (import_drow.py: the body's skin, the shirt, the gym top) gets a
+	// dynamic instance with these. Found by the parent, not by slot index or name: a reimport may add slots.
+	void SetMaskWear(USkeletalMeshComponent* Mesh, const FLinearColor& Wear, const FLinearColor& Wear2)
+	{
+		if (!Mesh)
+		{
+			return;
+		}
+		for (int32 i = 0; i < Mesh->GetNumMaterials(); ++i)
+		{
+			UMaterialInterface* M = Mesh->GetMaterial(i);
+			if (!M || !M->GetBaseMaterial() || M->GetBaseMaterial()->GetFName() != MaskedMaterial)
+			{
+				continue;
+			}
+			// Reuses the dynamic instance already on the slot, so construction does not pile them up.
+			if (UMaterialInstanceDynamic* MID = Mesh->CreateDynamicMaterialInstance(i))
+			{
+				MID->SetVectorParameterValue(TEXT("Wear"), Wear);
+				MID->SetVectorParameterValue(TEXT("Wear2"), Wear2);
+			}
+		}
+	}
 
 	UStaticMeshComponent* MakeProp(ACharacter* Owner, const TCHAR* Name, const TCHAR* Asset, FName Socket)
 	{
@@ -86,4 +120,74 @@ void ADrow::OnConstruction(const FTransform& Transform)
 			Piece->SetLeaderPoseComponent(GetMesh());
 		}
 	}
+	UpdateBodyMasks();
+}
+
+USkeletalMeshComponent* ADrow::FindPiece(FName Piece) const
+{
+	for (USkeletalMeshComponent* P : Pieces)
+	{
+		if (P && P->GetFName() == Piece)
+		{
+			return P;
+		}
+	}
+	return nullptr;
+}
+
+void ADrow::UpdateHP(float change)
+{
+	this->HP = this->HP + change;
+}
+
+void ADrow::UpdateTotalAmmo(float change)
+{
+	this->TotalAmmo = this->TotalAmmo + change;
+}
+
+void ADrow::UpdateMagazineCapacity(float change)
+{
+	this->MagazineCapacity = this->MagazineCapacity + change;
+}
+
+void ADrow::ResetMagazine()
+{
+	if (this->MagazineCapacity == 0) {
+		UE_LOG(LogTemp, Error, TEXT("ADrow::ResetMagazine: MagazineCapacity should not be zero"));
+	}
+	this->CurrentAmmoInMagazine = this->MagazineCapacity;
+}
+
+void ADrow::UpdateBulletDamage(float change)
+{
+	this->BulletDamage = this->BulletDamage + change;
+}
+
+void ADrow::UpdateKatanaDamage(float change)
+{
+	this->KatanaDamage = this->KatanaDamage + change;
+}
+
+void ADrow::SetPieceWorn(FName Piece, bool bWorn)
+{
+	if (USkeletalMeshComponent* P = FindPiece(Piece))
+	{
+		P->SetVisibility(bWorn);
+		UpdateBodyMasks();
+	}
+}
+
+void ADrow::UpdateBodyMasks()
+{
+	float W[8];
+	for (int32 i = 0; i < 8; ++i)
+	{
+		const USkeletalMeshComponent* P = FindPiece(MaskSlots[i]);
+		W[i] = P && P->GetVisibleFlag() ? 1.f : 0.f;
+	}
+	SetMaskWear(GetMesh(), FLinearColor(W[0], W[1], W[2], W[3]), FLinearColor(W[4], W[5], W[6], W[7]));
+	// The shirt's and the gym top's own masks have one slot, the jacket over them (R of their masks_rgba.png).
+	const FLinearColor UnderJacket(W[0], 0.f, 0.f, 0.f);
+	SetMaskWear(FindPiece(TEXT("Shirt")), UnderJacket, FLinearColor::Transparent);
+	SetMaskWear(FindPiece(TEXT("Gym_Top")), UnderJacket, FLinearColor::Transparent);
 }
