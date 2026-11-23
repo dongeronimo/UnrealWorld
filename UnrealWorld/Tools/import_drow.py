@@ -226,7 +226,7 @@ def build_instances(manifest, keys, tex, base):
         o.set_editor_properties({"override_two_sided": True, "two_sided": two})
         mi.set_editor_property("base_property_overrides", o)
         mel.update_material_instance(mi)
-        assets.save_loaded_asset(mi)
+        assets.save_loaded_asset(mi, only_if_is_dirty=False)
         out[m] = mi
         log("material %s -> %s%s%s" % (m, name, " (%s)" % tex[m] if m in tex else " (tint)", ", two-sided" if two else ""))
     return out
@@ -242,8 +242,9 @@ def assign(mesh, entry, mis):
         match = [m for m in entry["materiais"] if slot.startswith(clean(m))]
         if not match and len(entry["materiais"]) == 1:
             # textura_peca.py (2026-11-22) renamed the Tripo materials (tripo_mat_<hash>) to M_<Piece>. A reimport
-            # adds the new slot and keeps the old one, which no section uses any more; removing it would shift the
-            # sections' indices. The piece has one material, so the old slot gets it too
+            # keeps the old slot (reset_to_fbx_on_material_conflict does not apply to an automated import) and adds
+            # the new one, which the sections use. Removing the old one would shift the section indices; the piece
+            # has one material, so the old slot gets it too
             match = list(entry["materiais"])
             log("%s: slot %s, from an earlier import, gets %s too" % (mesh.get_name(), slot, match[0]))
         if not match:
@@ -254,6 +255,11 @@ def assign(mesh, entry, mis):
     if missing:
         raise RuntimeError("%s: slots with no Blender material: %s" % (mesh.get_name(), missing))
     mesh.set_editor_property("materials", slots)
+    # read back: a slot left empty renders the default grey material and no import error says so
+    empty = [str(x.get_editor_property("material_slot_name")) for x in mesh.get_editor_property("materials")
+             if x.get_editor_property("material_interface") is None]
+    if empty:
+        raise RuntimeError("%s: slots still empty after assigning: %s" % (mesh.get_name(), empty))
 
 
 def check_morphs(mesh, entry):
@@ -337,7 +343,11 @@ def import_pieces(manifest, keys, tex):
             raise RuntimeError("%s is on %s, not %s" % (f["nome"], m.skeleton.get_path_name(), skeleton.get_path_name()))
         assign(m, f, mis)
         n, lost = check_morphs(m, f)
-        assets.save_loaded_asset(m)
+        # setting "materials" does not mark the package dirty, so a save "if dirty" kept the state the import task
+        # saved, with the new slot empty: six pieces rendered grey (2026-11-22). The full run hid this, since it
+        # saves the whole directory
+        if not assets.save_loaded_asset(m, only_if_is_dirty=False):
+            raise RuntimeError("could not save " + m.get_path_name())
         log("%s: %d morph targets, %d material slots%s" % (
             m.get_name(), n, len(m.get_editor_property("materials")), ", hidden in Blender" if f["escondida"] else ""))
     assets.save_loaded_asset(skeleton, only_if_is_dirty=True)

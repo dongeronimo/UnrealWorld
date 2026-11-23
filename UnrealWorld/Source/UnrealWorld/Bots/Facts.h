@@ -34,3 +34,17 @@ struct Facts
         Values[(int)F] = V;
     }
 };
+
+struct Condition
+{
+    EFact Fact;
+    bool Value;
+};
+
+struct Action
+{
+    FName Name;
+    TArray<Condition> Pre;
+    TArray<Condition> Effects;
+    float Cost = 1.f;
+};

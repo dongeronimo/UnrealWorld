@@ -17,4 +17,5 @@ public:
     TObjectPtr<ARatomanBrute> RatomanBrute;
 protected:
     virtual void OnPossess(APawn* InPawn) override;
+    virtual const TArray<Action>& GetActions() const override;
 };

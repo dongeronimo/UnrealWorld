@@ -143,7 +143,9 @@ If any of these is wrong, it is a Blender fix plus a re-export, not an edit here
   offsets) will leave the forearm behind.
 - Six pieces (`Choker`, the three hairs, `Holster`, `Katana_Sheat`) have two material slots since 2026-11-22: a
   reimport keeps the old `tripo_mat_<hash>` slot when Blender renames the material. It is unused, and
-  `import_drow.py` gives it the same instance. Removing it would shift the section indices.
+  `import_drow.py` gives it the same instance. Removing it would shift the section indices. The first `pecas` run
+  saved meshes only if dirty, and setting materials does not dirty them: the new slot stayed empty and those six
+  pieces rendered grey. `pecas` now always saves.
 - `T_Drow_jacket`, `_boots`, `_cargo_pants`, `_gym_top`, `_shirt` keep their old lower-case names (Unreal names
   are case-insensitive) and hold the new 512/1024 textures.
 - `notifies_drow.py` and `bp_drow.py` own what they write. A hand edit to the Katana notify track is replaced on
